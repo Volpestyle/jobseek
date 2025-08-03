@@ -2,7 +2,13 @@ import { NextResponse, NextRequest } from "next/server"
 import { auth } from "@/lib/auth/auth.config"
 
 export async function middleware(request: NextRequest) {
-  const isAuthPage = request.nextUrl.pathname.startsWith("/auth")
+  const pathname = request.nextUrl.pathname
+  const isAuthPage = pathname.startsWith("/auth")
+  
+  // Redirect root path to dashboard
+  if (pathname === "/") {
+    return NextResponse.redirect(new URL("/dashboard", request.url))
+  }
   
   // Check if user is authenticated via NextAuth
   const session = await auth()
