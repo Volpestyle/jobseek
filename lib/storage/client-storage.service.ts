@@ -4,50 +4,11 @@ import {
   SavedJob,
   SavedSearch,
   JobApplication,
-  JobBoard
+  JobBoard,
+  UserProfile
 } from '../db/dynamodb.service'
 import { localStorageService } from './local-storage.service'
-
-export interface ClientStorageService {
-  // Saved Jobs
-  saveJob(job: Omit<SavedJob, 'userId' | 'savedAt'>): Promise<SavedJob>
-  getSavedJob(jobId: string): Promise<SavedJob | null>
-  getSavedJobs(): Promise<SavedJob[]>
-  deleteSavedJob(jobId: string): Promise<void>
-
-  // Saved Searches
-  saveSearch(search: Omit<SavedSearch, 'userId' | 'searchId' | 'createdAt' | 'updatedAt'>): Promise<SavedSearch>
-  getSavedSearch(searchId: string): Promise<SavedSearch | null>
-  getSavedSearches(): Promise<SavedSearch[]>
-  updateSearchLastRun(searchId: string): Promise<void>
-  updateSavedSearch(search: Omit<SavedSearch, 'userId'>): Promise<SavedSearch>
-  deleteSavedSearch(searchId: string): Promise<void>
-
-  // Job Applications
-  saveApplication(application: Omit<JobApplication, 'userId' | 'applicationId' | 'appliedAt'>): Promise<JobApplication>
-  getApplication(applicationId: string): Promise<JobApplication | null>
-  getApplications(): Promise<JobApplication[]>
-  updateApplicationStatus(applicationId: string, status: JobApplication["status"], notes?: string): Promise<void>
-
-  // Job Boards
-  createJobBoard(board: Omit<JobBoard, 'userId' | 'boardId' | 'createdAt' | 'updatedAt'>): Promise<JobBoard>
-  getJobBoard(boardId: string): Promise<JobBoard | null>
-  getJobBoards(): Promise<JobBoard[]>
-  addJobToBoard(boardId: string, jobId: string): Promise<void>
-  removeJobFromBoard(boardId: string, jobId: string): Promise<void>
-  deleteJobBoard(boardId: string): Promise<void>
-
-  // User Board Preferences
-  initializeUserJobBoards(boardIds: string[]): Promise<void>
-  isUserInitialized(): Promise<boolean>
-  getUserSavedBoards(): Promise<string[]>
-  saveUserBoardPreference(boardId: string, saved: boolean): Promise<void>
-
-  // Saved Searches Initialization
-  initializeDefaultSearches(searches: Omit<SavedSearch, 'userId'>[]): Promise<void>
-  hasInitializedSearches(): Promise<boolean>
-  markSearchesInitialized(): Promise<void>
-}
+import { ClientStorageService } from './storage.interface'
 
 class ClientStorageServiceImpl implements ClientStorageService {
   constructor(
@@ -327,6 +288,54 @@ class ClientStorageServiceImpl implements ClientStorageService {
     }
   }
 
+  // User Profile
+  async getUserProfile(): Promise<UserProfile | null> {
+    if (this.isAuthenticated && this.userId) {
+      const data = await this.fetchAPI('/api/user/profile')
+      return data
+    } else {
+      return localStorageService.getUserProfile?.('anonymous') || null
+    }
+  }
+
+  async saveUserProfile(profile: Omit<UserProfile, 'userId'>): Promise<UserProfile> {
+    if (this.isAuthenticated && this.userId) {
+      const data = await this.fetchAPI('/api/user/profile', {
+        method: 'PUT',
+        body: JSON.stringify(profile),
+      })
+      return data
+    } else {
+      const fullProfile: UserProfile = {
+        ...profile,
+        userId: 'anonymous',
+        createdAt: profile.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }
+      return localStorageService.saveUserProfile?.(fullProfile) || fullProfile
+    }
+  }
+
+  async updateUserProfile(updates: Partial<Omit<UserProfile, 'userId' | 'createdAt'>>): Promise<UserProfile> {
+    if (this.isAuthenticated && this.userId) {
+      const data = await this.fetchAPI('/api/user/profile', {
+        method: 'PUT',
+        body: JSON.stringify(updates),
+      })
+      return data
+    } else {
+      const currentProfile = await localStorageService.getUserProfile?.('anonymous')
+      const updatedProfile: UserProfile = {
+        ...currentProfile,
+        ...updates,
+        userId: 'anonymous',
+        createdAt: currentProfile?.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }
+      return localStorageService.updateUserProfile?.('anonymous', updates).then(() => updatedProfile) || updatedProfile
+    }
+  }
+
   // User Board Preferences
   async initializeUserJobBoards(boardIds: string[]): Promise<void> {
     if (this.isAuthenticated && this.userId) {
@@ -404,3 +413,6 @@ class ClientStorageServiceImpl implements ClientStorageService {
 export function createClientStorageService(isAuthenticated: boolean, userId: string | null): ClientStorageService {
   return new ClientStorageServiceImpl(isAuthenticated, userId)
 }
+
+// Re-export the interface for backward compatibility
+export type { ClientStorageService } from './storage.interface'

@@ -2,7 +2,8 @@
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react'
 import { useSession, signOut as nextAuthSignOut } from 'next-auth/react'
-import { createClientStorageService, ClientStorageService } from '@/lib/storage/client-storage.service'
+import { createClientStorageService } from '@/lib/storage/client-storage.service'
+import { ClientStorageService } from '@/lib/storage/storage.interface'
 import { storageService } from '@/lib/storage/storage.service'
 
 interface AuthContextType {

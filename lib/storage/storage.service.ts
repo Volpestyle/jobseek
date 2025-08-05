@@ -8,57 +8,7 @@ import {
 } from '../db/dynamodb.service'
 import { localStorageService, LocalStorageService } from './local-storage.service'
 import type { UserProfile } from '../db/dynamodb.service'
-
-export interface StorageService {
-  // User Profile
-  getUserProfile?(userId: string): Promise<UserProfile | null>
-  saveUserProfile?(profile: UserProfile): Promise<UserProfile>
-  updateUserProfile?(userId: string, updates: Partial<UserProfile>): Promise<UserProfile>
-
-  // Saved Jobs
-  saveJob(job: SavedJob): Promise<SavedJob>
-  getSavedJob(userId: string, jobId: string): Promise<SavedJob | null>
-  getSavedJobs(userId: string): Promise<SavedJob[]>
-  deleteSavedJob(userId: string, jobId: string): Promise<void>
-
-  // Saved Searches
-  saveSearch(search: SavedSearch): Promise<SavedSearch>
-  getSavedSearch(userId: string, searchId: string): Promise<SavedSearch | null>
-  getSavedSearches(userId: string): Promise<SavedSearch[]>
-  updateSearchLastRun(userId: string, searchId: string): Promise<void>
-  updateSavedSearch?(search: SavedSearch): Promise<SavedSearch>
-  deleteSavedSearch(userId: string, searchId: string): Promise<void>
-
-  // Job Applications
-  saveApplication(application: JobApplication): Promise<JobApplication>
-  getApplication(userId: string, applicationId: string): Promise<JobApplication | null>
-  getApplications(userId: string): Promise<JobApplication[]>
-  updateApplicationStatus(
-    userId: string,
-    applicationId: string,
-    status: JobApplication["status"],
-    notes?: string
-  ): Promise<void>
-
-  // Job Boards
-  createJobBoard(board: JobBoard): Promise<JobBoard>
-  getJobBoard(userId: string, boardId: string): Promise<JobBoard | null>
-  getJobBoards(userId: string): Promise<JobBoard[]>
-  addJobToBoard(userId: string, boardId: string, jobId: string): Promise<void>
-  removeJobFromBoard(userId: string, boardId: string, jobId: string): Promise<void>
-  deleteJobBoard(userId: string, boardId: string): Promise<void>
-
-  // User Board Preferences
-  initializeUserJobBoards?(userId: string, boardIds: string[]): Promise<void>
-  isUserInitialized?(userId: string): Promise<boolean>
-  getUserSavedBoards?(userId: string): Promise<string[]>
-  saveUserBoardPreference?(userId: string, boardId: string, saved: boolean): Promise<void>
-
-  // Saved Searches Initialization
-  initializeDefaultSearches?(userId: string, searches: Omit<SavedSearch, 'userId'>[]): Promise<void>
-  hasInitializedSearches?(userId: string): Promise<boolean>
-  markSearchesInitialized?(userId: string): Promise<void>
-}
+import { StorageService } from './storage.interface'
 
 class UnifiedStorageService {
   private dynamoService: DynamoDBService = dynamodbService
@@ -171,4 +121,5 @@ class UnifiedStorageService {
 }
 
 export const storageService = new UnifiedStorageService()
-export type { SavedJob, SavedSearch, JobApplication, JobBoard }
+export type { SavedJob, SavedSearch, JobApplication, JobBoard, UserProfile }
+export type { StorageService } from './storage.interface'

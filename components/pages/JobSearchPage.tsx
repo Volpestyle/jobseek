@@ -856,7 +856,7 @@ export function JobSearchPage() {
                           onClick={() => handleRunSearch(search)}
                           disabled={runningSearchId === search.searchId}
                         >
-                          <Play className="h-4 w-4 mr-1" />
+                          <Play className="h-4 w-4 mr-2" />
                           {runningSearchId === search.searchId ? "Starting..." : "Run"}
                         </Button>
                       </div>
@@ -939,12 +939,12 @@ export function JobSearchPage() {
                           >
                             {saved ? (
                               <>
-                                <Star className="h-4 w-4 mr-1" />
+                                <Star className="h-4 w-4 mr-2" />
                                 Saved
                               </>
                             ) : (
                               <>
-                                <StarOff className="h-4 w-4 mr-1" />
+                                <StarOff className="h-4 w-4 mr-2" />
                                 Save
                               </>
                             )}

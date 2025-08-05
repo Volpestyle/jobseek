@@ -48,6 +48,11 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
   const router = useRouter();
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
+  const [hasInitialized, setHasInitialized] = React.useState(false);
+
+  React.useEffect(() => {
+    setHasInitialized(true);
+  }, []);
 
   const menuItems = [
     { id: "overview", label: "Overview", icon: Home, href: "/dashboard" },
@@ -119,7 +124,7 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
             <motion.div
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground"
               animate={{
-                x: isCollapsed ? -10 : 0,
+                x: isCollapsed ? -8 : 0,
               }}
               transition={{ type: "spring", stiffness: 300, damping: 25 }}
             >
@@ -130,7 +135,9 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
             <AnimatePresence>
               {!isCollapsed && (
                 <motion.div
-                  initial={{ opacity: 0, x: -10, width: 0 }}
+                  initial={
+                    hasInitialized ? { opacity: 0, x: -10, width: 0 } : false
+                  }
                   animate={{
                     opacity: 1,
                     x: 0,
@@ -167,65 +174,64 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
         <SidebarMenu>
           {menuItems.map((item, index) => (
             <SidebarMenuItem key={item.id}>
-              <Link
-                href={item.href}
+              <Button
+                variant="ghost"
+                size="sm"
+                centerHover={isCollapsed}
                 className={cn(
-                  "relative flex items-center rounded-md p-2 text-left text-sm outline-hidden",
-                  "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                  "focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+                  "w-full justify-start h-8 px-2",
                   pathname === item.href &&
                     "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
                 )}
+                onClick={() => router.push(item.href)}
               >
-                <motion.div className="flex items-center w-full justify-start">
-                  {/* Icon container with layout animation */}
-                  <motion.div
-                    className="flex h-4 w-4 shrink-0 items-center justify-center"
-                    animate={{
-                      x: isCollapsed ? 6 : 0,
-                    }}
-                    transition={{ type: "spring", stiffness: 300, damping: 25 }}
-                  >
-                    <item.icon className="h-4 w-4" />
-                  </motion.div>
+                <div className="flex items-center w-full relative">
+                  {/* Icon container - no animation, always centered */}
+                  <item.icon className="h-4 w-4 shrink-0" />
 
                   {/* Text and badge container */}
-                  <AnimatePresence>
-                    {!isCollapsed && (
-                      <motion.div
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{
-                          opacity: 1,
-                          x: 0,
-                          transition: {
-                            opacity: {
-                              duration: 0.3,
+                  <div className="relative flex-1 h-full ml-2">
+                    <AnimatePresence>
+                      {!isCollapsed && (
+                        <motion.div
+                          initial={
+                            hasInitialized ? { opacity: 0, x: -10 } : false
+                          }
+                          animate={{
+                            opacity: 1,
+                            x: 0,
+                            transition: {
+                              opacity: {
+                                duration: 0.3,
+                              },
+                              x: {
+                                duration: 0.3,
+                                ease: "easeOut",
+                              },
                             },
-                            x: {
-                              duration: 0.3,
-                              ease: "easeOut",
+                          }}
+                          exit={{
+                            opacity: 0,
+                            x: -10,
+                            transition: {
+                              opacity: { duration: 0.2 },
+                              x: { duration: 0.2, ease: "easeIn" },
                             },
-                          },
-                        }}
-                        exit={{
-                          opacity: 0,
-                          x: -10,
-                          transition: {
-                            opacity: { duration: 0.2 },
-                            x: { duration: 0.2, ease: "easeIn" },
-                          },
-                        }}
-                        className="flex items-center gap-2 overflow-hidden ml-2"
-                      >
-                        <span className="whitespace-nowrap">{item.label}</span>
-                        {item.badge && (
-                          <SidebarMenuBadge>{item.badge}</SidebarMenuBadge>
-                        )}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </motion.div>
-              </Link>
+                          }}
+                          className="flex items-center justify-between absolute inset-0 pr-2 w-full"
+                        >
+                          <span className="whitespace-nowrap">
+                            {item.label}
+                          </span>
+                          {item.badge && (
+                            <SidebarMenuBadge>{item.badge}</SidebarMenuBadge>
+                          )}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </div>
+              </Button>
             </SidebarMenuItem>
           ))}
         </SidebarMenu>
@@ -236,249 +242,205 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
           {isAuthenticated ? (
             <>
               <SidebarMenuItem>
-                <button
-                  className={cn(
-                    "flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-hidden",
-                    "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                    "focus-visible:ring-2 focus-visible:ring-sidebar-ring"
-                  )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  centerHover={isCollapsed}
+                  className="w-full justify-start h-8 px-2"
                 >
-                  <motion.div className="flex items-center w-full justify-start">
+                  <div className="flex items-center w-full justify-start relative">
                     {/* Avatar container */}
-                    <motion.div
-                      animate={{
-                        x: isCollapsed ? 6 : 0,
-                      }}
-                      transition={{
-                        type: "spring",
-                        stiffness: 300,
-                        damping: 25,
-                      }}
-                    >
-                      <Avatar className="h-5 w-5 shrink-0">
-                        <AvatarImage src={user.image || undefined} />
-                        <AvatarFallback>
-                          {user.name?.charAt(0) || user.email?.charAt(0) || "U"}
-                        </AvatarFallback>
-                      </Avatar>
-                    </motion.div>
+                    <Avatar className="h-4 w-4 shrink-0">
+                      <AvatarImage src={user.image || undefined} />
+                      <AvatarFallback>
+                        {user.name?.charAt(0) || user.email?.charAt(0) || "U"}
+                      </AvatarFallback>
+                    </Avatar>
 
                     {/* Text container */}
-                    <AnimatePresence>
-                      {!isCollapsed && (
-                        <motion.div
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{
-                            opacity: 1,
-                            x: 0,
-                            transition: {
-                              opacity: { duration: 0.3, delay: 0.1 },
-                              x: { duration: 0.3, ease: "easeOut" },
-                            },
-                          }}
-                          exit={{
-                            opacity: 0,
-                            x: -10,
-                            transition: {
-                              opacity: { duration: 0.2 },
-                              x: { duration: 0.2, ease: "easeIn" },
-                            },
-                          }}
-                          className="overflow-hidden ml-2"
-                        >
-                          <span className="whitespace-nowrap">
-                            {user.name || user.email || "User"}
-                          </span>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </motion.div>
-                </button>
+                    <div className="relative flex-1 h-full ml-2">
+                      <AnimatePresence>
+                        {!isCollapsed && (
+                          <motion.div
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{
+                              opacity: 1,
+                              x: 0,
+                              transition: {
+                                opacity: { duration: 0.3, delay: 0.1 },
+                                x: { duration: 0.3, ease: "easeOut" },
+                              },
+                            }}
+                            exit={{
+                              opacity: 0,
+                              x: -10,
+                              transition: {
+                                opacity: { duration: 0.2 },
+                                x: { duration: 0.2, ease: "easeIn" },
+                              },
+                            }}
+                            className="flex items-center absolute inset-0"
+                          >
+                            <span className="whitespace-nowrap">
+                              {user.name || user.email || "User"}
+                            </span>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  </div>
+                </Button>
               </SidebarMenuItem>
               <SidebarMenuItem>
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  centerHover={isCollapsed}
                   onClick={handleSignOut}
-                  className={cn(
-                    "flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-hidden",
-                    "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                    "focus-visible:ring-2 focus-visible:ring-sidebar-ring"
-                  )}
+                  className="w-full justify-start h-8 px-2"
                 >
-                  <motion.div className="flex items-center w-full justify-start">
+                  <div className="flex items-center w-full justify-start relative">
                     {/* Icon container */}
-                    <motion.div
-                      className="flex h-4 w-4 shrink-0 items-center justify-center"
-                      animate={{
-                        x: isCollapsed ? 6 : 0,
-                      }}
-                      transition={{
-                        type: "spring",
-                        stiffness: 300,
-                        damping: 25,
-                      }}
-                    >
-                      <LogOut className="h-4 w-4" />
-                    </motion.div>
+                    <LogOut className="h-4 w-4 shrink-0" />
 
                     {/* Text container */}
-                    <AnimatePresence>
-                      {!isCollapsed && (
-                        <motion.div
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{
-                            opacity: 1,
-                            x: 0,
-                            transition: {
-                              opacity: { duration: 0.3, delay: 0.1 },
-                              x: { duration: 0.3, ease: "easeOut" },
-                            },
-                          }}
-                          exit={{
-                            opacity: 0,
-                            x: -10,
-                            transition: {
-                              opacity: { duration: 0.2 },
-                              x: { duration: 0.2, ease: "easeIn" },
-                            },
-                          }}
-                          className="overflow-hidden ml-2"
-                        >
-                          <span className="whitespace-nowrap">Logout</span>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </motion.div>
-                </button>
+                    <div className="relative flex-1 h-full ml-2">
+                      <AnimatePresence>
+                        {!isCollapsed && (
+                          <motion.div
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{
+                              opacity: 1,
+                              x: 0,
+                              transition: {
+                                opacity: { duration: 0.3, delay: 0.1 },
+                                x: { duration: 0.3, ease: "easeOut" },
+                              },
+                            }}
+                            exit={{
+                              opacity: 0,
+                              x: -10,
+                              transition: {
+                                opacity: { duration: 0.2 },
+                                x: { duration: 0.2, ease: "easeIn" },
+                              },
+                            }}
+                            className="flex items-center absolute inset-0"
+                          >
+                            <span className="whitespace-nowrap">Logout</span>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  </div>
+                </Button>
               </SidebarMenuItem>
             </>
           ) : (
             <>
               <SidebarMenuItem>
-                <button
-                  className={cn(
-                    "flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-hidden",
-                    "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                    "focus-visible:ring-2 focus-visible:ring-sidebar-ring"
-                  )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  centerHover={isCollapsed}
+                  className="w-full justify-start h-8 px-2"
                 >
-                  <motion.div className="flex items-center w-full justify-start">
-                    <motion.div
-                      animate={{
-                        x: isCollapsed ? 6 : 0,
-                      }}
-                      transition={{
-                        type: "spring",
-                        stiffness: 300,
-                        damping: 25,
-                      }}
-                    >
-                      <UserCircle className="h-5 w-5" />
-                    </motion.div>
-                    <AnimatePresence>
-                      {!isCollapsed && (
-                        <motion.span
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{
-                            opacity: 1,
-                            x: 0,
-                            transition: {
-                              opacity: { duration: 0.3, delay: 0.1 },
-                              x: { duration: 0.3, ease: "easeOut" },
-                            },
-                          }}
-                          exit={{
-                            opacity: 0,
-                            x: -10,
-                            transition: {
-                              opacity: { duration: 0.2 },
-                              x: { duration: 0.2, ease: "easeIn" },
-                            },
-                          }}
-                          className="whitespace-nowrap ml-2"
-                        >
-                          Anonymous User
-                        </motion.span>
-                      )}
-                    </AnimatePresence>
-                  </motion.div>
-                </button>
+                  <div className="flex items-center w-full justify-start relative">
+                    <UserCircle className="h-4 w-4 shrink-0" />
+                    <div className="relative flex-1 h-full ml-2">
+                      <AnimatePresence>
+                        {!isCollapsed && (
+                          <motion.div
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{
+                              opacity: 1,
+                              x: 0,
+                              transition: {
+                                opacity: { duration: 0.3, delay: 0.1 },
+                                x: { duration: 0.3, ease: "easeOut" },
+                              },
+                            }}
+                            exit={{
+                              opacity: 0,
+                              x: -10,
+                              transition: {
+                                opacity: { duration: 0.2 },
+                                x: { duration: 0.2, ease: "easeIn" },
+                              },
+                            }}
+                            className="flex items-center absolute inset-0"
+                          >
+                            <span className="whitespace-nowrap">
+                              Anonymous User
+                            </span>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  </div>
+                </Button>
               </SidebarMenuItem>
               <SidebarMenuItem>
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  centerHover={isCollapsed}
                   onClick={handleSignIn}
-                  className={cn(
-                    "flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-hidden",
-                    "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                    "focus-visible:ring-2 focus-visible:ring-sidebar-ring"
-                  )}
+                  className="w-full justify-start h-8 px-2"
                 >
-                  <motion.div className="flex items-center w-full justify-start">
-                    <motion.div
-                      animate={{
-                        x: isCollapsed ? 12 : 0,
-                      }}
-                      transition={{
-                        type: "spring",
-                        stiffness: 300,
-                        damping: 25,
-                      }}
-                    >
-                      <LogIn className="h-4 w-4" />
-                    </motion.div>
-                    <AnimatePresence>
-                      {!isCollapsed && (
-                        <motion.span
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{
-                            opacity: 1,
-                            x: 0,
-                            transition: {
-                              opacity: { duration: 0.3, delay: 0.1 },
-                              x: { duration: 0.3, ease: "easeOut" },
-                            },
-                          }}
-                          exit={{
-                            opacity: 0,
-                            x: -10,
-                            transition: {
-                              opacity: { duration: 0.2 },
-                              x: { duration: 0.2, ease: "easeIn" },
-                            },
-                          }}
-                          className="whitespace-nowrap ml-2"
-                        >
-                          Sign In
-                        </motion.span>
-                      )}
-                    </AnimatePresence>
-                  </motion.div>
-                </button>
+                  <div className="flex items-center w-full justify-start relative">
+                    <LogIn className="h-4 w-4 shrink-0" />
+                    <div className="relative flex-1 h-full ml-2">
+                      <AnimatePresence>
+                        {!isCollapsed && (
+                          <motion.div
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{
+                              opacity: 1,
+                              x: 0,
+                              transition: {
+                                opacity: { duration: 0.3, delay: 0.1 },
+                                x: { duration: 0.3, ease: "easeOut" },
+                              },
+                            }}
+                            exit={{
+                              opacity: 0,
+                              x: -10,
+                              transition: {
+                                opacity: { duration: 0.2 },
+                                x: { duration: 0.2, ease: "easeIn" },
+                              },
+                            }}
+                            className="flex items-center absolute inset-0"
+                          >
+                            <span className="whitespace-nowrap">Sign In</span>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  </div>
+                </Button>
               </SidebarMenuItem>
             </>
           )}
         </SidebarMenu>
         {!isAuthenticated && (
-          <AnimatePresence>
-            {!isCollapsed && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "2.75rem" }}
-                exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: 0.15, type: "tween", ease: "easeOut" }}
-                className="px-2 py-2 text-xs text-muted-foreground overflow-hidden"
-              >
+          <div className="relative h-11 overflow-hidden">
+            <AnimatePresence>
+              {!isCollapsed && (
                 <motion.div
-                  initial={{ opacity: 0, y: 10 }}
+                  initial={hasInitialized ? { opacity: 0, y: 10 } : false}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 10 }}
-                  transition={{ duration: 0.2, delay: 0.1 }}
+                  transition={{ duration: 0.2 }}
+                  className="absolute inset-0 px-2 py-2 text-xs text-muted-foreground"
                 >
                   <p>Data stored locally</p>
                   <p>Sign in to sync across devices</p>
                 </motion.div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+              )}
+            </AnimatePresence>
+          </div>
         )}
       </SidebarFooter>
       <SidebarRail />

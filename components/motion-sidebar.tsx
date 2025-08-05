@@ -30,7 +30,7 @@ interface MotionSidebarProps extends React.ComponentProps<"div"> {
 
 const SIDEBAR_WIDTH = "16rem";
 const SIDEBAR_WIDTH_MOBILE = "18rem";
-const SIDEBAR_WIDTH_ICON = "3rem";
+const SIDEBAR_WIDTH_ICON = "3.1rem";
 
 export function MotionSidebar({
   side = "left",
