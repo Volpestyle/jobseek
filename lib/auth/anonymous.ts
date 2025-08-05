@@ -5,7 +5,7 @@ import jwt from "jsonwebtoken"
 /**
  * JWT secret for anonymous IDs (should be in env in production)
  */
-const ANONYMOUS_JWT_SECRET = process.env.ANONYMOUS_JWT_SECRET || 'jobseek-anonymous-jwt-secret-2024';
+const ANONYMOUS_JWT_SECRET = process.env.ANONYMOUS_JWT_SECRET!;
 
 /**
  * Creates a JWT token containing anonymous user fingerprint
@@ -56,6 +56,7 @@ export function verifyAnonymousToken(token: string): { id: string; fingerprint: 
     return null;
   }
 }
+
 
 /**
  * Validates that the request matches the token fingerprint (with some flexibility)

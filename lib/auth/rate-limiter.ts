@@ -1,6 +1,5 @@
 import { NextRequest } from "next/server"
-import { generateAnonymousId } from "./anonymous"
-import { auth } from "./auth.config"
+import { getUserFromRequest } from "./auth-utils"
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb"
 import {
   DynamoDBDocumentClient,
@@ -196,23 +195,30 @@ async function getRateLimitConfig(
   request: NextRequest,
   limitType: 'session' | 'search' | 'apply'
 ): Promise<{ identifier: string; config: RateLimitConfig }> {
-  const session = await auth()
+  const userInfo = await getUserFromRequest(request)
   
-  if (session?.user?.id) {
+  if (!userInfo) {
+    // No user identified, use IP-based fallback
+    const ip = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown'
+    return {
+      identifier: `${limitType}:ip:${ip}`,
+      config: RATE_LIMIT_TIERS.anonymous[limitType],
+    }
+  }
+  
+  if (userInfo.isAuthenticated && userInfo.userId) {
     // Authenticated user
-    const isPremium = await isPremiumUser(session.user.id)
+    const isPremium = await isPremiumUser(userInfo.userId)
     const tier = isPremium ? 'premium' : 'authenticated'
     
     return {
-      identifier: `${limitType}:user:${session.user.id}`,
+      identifier: `${limitType}:user:${userInfo.userId}`,
       config: RATE_LIMIT_TIERS[tier][limitType],
     }
   } else {
-    // Anonymous user
-    const anonymousId = generateAnonymousId(request)
-    
+    // Anonymous user with token
     return {
-      identifier: `${limitType}:anon:${anonymousId}`,
+      identifier: `${limitType}:${userInfo.userId}`,
       config: RATE_LIMIT_TIERS.anonymous[limitType],
     }
   }

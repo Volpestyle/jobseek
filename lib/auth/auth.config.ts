@@ -35,44 +35,37 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (account?.provider === 'google' && profile) {
           // Google provides verified email, given_name, family_name, locale
           providerData = {
-            firstName: (profile as any).given_name || user.name?.split(' ')[0] || '',
-            lastName: (profile as any).family_name || user.name?.split(' ').slice(1).join(' ') || '',
-            avatarUrl: (profile as any).picture || user.image || undefined,
-            location: (profile as any).locale || undefined,
+            firstName: profile.given_name || user.name?.split(' ')[0] || '',
+            lastName: profile.family_name || user.name?.split(' ').slice(1).join(' ') || '',
+            avatarUrl: profile.picture || user.image,
+            location: profile.locale as string,
           }
         } else if (account?.provider === 'twitter' && profile) {
           // Twitter/X provides username, bio, location, profile_image_url
           providerData = {
             firstName: user.name?.split(' ')[0] || '',
             lastName: user.name?.split(' ').slice(1).join(' ') || '',
-            avatarUrl: (profile as any).profile_image_url_https || user.image || undefined,
-            bio: (profile as any).description || undefined,
-            location: (profile as any).location || undefined,
-            portfolioUrl: (profile as any).url || undefined, // Often contains personal website
+            avatarUrl: profile.profile_image_url_https as string || user.image as string,
+            bio: profile.description as string,
+            location: profile.location as string,
+            portfolioUrl: profile.url as string, // Often contains personal website
           }
         }
 
         // Create or update user profile in DynamoDB
         const profileData: UserProfile = {
+          // Always update these core fields
           userId: user.id!,
           email: user.email,
           provider: account?.provider,
-          ...providerData,
-          // Preserve existing data if updating
-          ...(existingProfile ? {
-            createdAt: existingProfile.createdAt,
-            // Don't overwrite these fields if they already exist
-            phone: existingProfile.phone || undefined,
-            linkedinUrl: existingProfile.linkedinUrl || undefined,
-            githubUrl: existingProfile.githubUrl || undefined,
-            skills: existingProfile.skills || undefined,
-            experience: existingProfile.experience || undefined,
-            education: existingProfile.education || undefined,
-            resumeUrl: existingProfile.resumeUrl || undefined,
-          } : {
-            createdAt: new Date().toISOString(),
-          }),
           updatedAt: new Date().toISOString(),
+
+          // Set createdAt only for new profiles
+          createdAt: existingProfile?.createdAt || new Date().toISOString(),
+
+          // Merge provider data with existing data
+          ...existingProfile, // Keep all existing fields
+          ...providerData,    // Override with fresh provider data (name, avatar, etc.)
         }
 
         await dynamodbService.saveUserProfile(profileData)
@@ -103,14 +96,3 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     signIn: "/auth/signin",
   },
 })
-
-declare module "next-auth" {
-  interface Session {
-    user: {
-      id: string
-      email?: string | null
-      name?: string | null
-      image?: string | null
-    }
-  }
-}

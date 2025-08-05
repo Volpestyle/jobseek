@@ -196,33 +196,22 @@ body {
   }
 }
 
-/* Ensure sidebar icons are properly centered when collapsed */
-[data-sidebar="sidebar"][data-state="collapsed"] [data-sidebar="menu-button"] {
-  justify-content: center !important;
+/* Disable ALL transitions on sidebar elements since we're using Motion */
+[data-slot="sidebar-gap"],
+[data-slot="sidebar-container"],
+[data-sidebar="sidebar"],
+[data-slot="sidebar-inner"],
+[data-sidebar="menu-button"],
+[data-sidebar="menu-action"],
+[data-sidebar="menu-badge"],
+[data-sidebar="rail"],
+.sidebar-menu-button {
+  transition: none !important;
 }
 
-/* Fade out only text spans when sidebar is collapsed */
-[data-sidebar="sidebar"][data-state="collapsed"]
-  [data-sidebar="menu-button"]
-  > span,
-[data-sidebar="sidebar"][data-state="collapsed"]
-  [data-sidebar="menu-button"]
-  > div {
-  opacity: 0;
-  pointer-events: none;
-  position: absolute;
-  width: 0;
-  overflow: hidden;
+/* Disable transitions on all sidebar children */
+[data-sidebar] *,
+[data-slot^="sidebar"] * {
+  transition: none !important;
 }
 
-/* Hide badges when collapsed using absolute positioning */
-.group[data-state="collapsed"] [data-sidebar="menu-badge"],
-.group[data-state="collapsed"] [data-slot="sidebar-menu-badge"],
-[data-state="collapsed"] [data-sidebar="menu-badge"],
-[data-state="collapsed"] [data-slot="sidebar-menu-badge"] {
-  position: absolute !important;
-  width: 0 !important;
-  height: 0 !important;
-  overflow: hidden !important;
-  opacity: 0 !important;
-}
