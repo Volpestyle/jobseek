@@ -71,7 +71,7 @@ export function JobSearchPage() {
     updateSearch,
     deleteSearch,
   } = useSavedSearches();
-  
+
   const router = useRouter();
   const { data: authSession } = useSession();
   const { anonymousId } = useAnonymousSession();
@@ -309,16 +309,19 @@ export function JobSearchPage() {
   const handleRunSearch = async (searchData?: SavedSearch) => {
     try {
       // Set which search is running
-      setRunningSearchId(searchData?.searchId || 'new');
-      
+      setRunningSearchId(searchData?.searchId || "new");
+
       // Use provided search data or current form data
       const searchKeywords = searchData?.keywords || keywords;
       const searchLocation = searchData?.location || location;
       const searchBoards = searchData?.jobBoards || selectedBoards;
-      const searchSalary = searchData ? 
-        (searchData.filters?.salaryMin && searchData.filters?.salaryMax ? 
-          `${searchData.filters.salaryMin}-${searchData.filters.salaryMax}` : undefined) :
-        (salaryMin && salaryMax ? `${salaryMin}-${salaryMax}` : undefined);
+      const searchSalary = searchData
+        ? searchData.filters?.salaryMin && searchData.filters?.salaryMax
+          ? `${searchData.filters.salaryMin}-${searchData.filters.salaryMax}`
+          : undefined
+        : salaryMin && salaryMax
+        ? `${salaryMin}-${salaryMax}`
+        : undefined;
 
       if (!searchKeywords || searchBoards.length === 0) {
         toast.error("Keywords and at least one job board are required");
@@ -326,34 +329,36 @@ export function JobSearchPage() {
       }
 
       // Start a new Wallcrawler session
-      const response = await fetch('/api/wallcrawler/search/start', {
-        method: 'POST',
+      const response = await fetch("/api/wallcrawler/search/start", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           keywords: searchKeywords,
           location: searchLocation,
           boards: searchBoards,
           salary: searchSalary,
-          anonymousId: anonymousId || undefined
+          anonymousId: anonymousId || undefined,
         }),
       });
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to start search');
+        throw new Error(error.error || "Failed to start search");
       }
 
       const { sessionId, debugUrl } = await response.json();
 
       toast.success("Search started successfully!");
-      
+
       // Navigate to active searches page to see the running search
-      router.push('/dashboard/active-searches');
+      router.push("/dashboard/active-searches");
     } catch (error) {
       console.error("Failed to run search:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to start search");
+      toast.error(
+        error instanceof Error ? error.message : "Failed to start search"
+      );
     } finally {
       setRunningSearchId(null);
     }
@@ -400,6 +405,24 @@ export function JobSearchPage() {
                     <X className="h-4 w-4 mr-1" />
                     Cancel
                   </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSaveSearch}
+                    disabled={
+                      !searchName || !keywords || selectedBoards.length === 0
+                    }
+                    className={
+                      hasUnsavedChanges
+                        ? "border-yellow-500 hover:border-yellow-600"
+                        : !hasUnsavedChanges
+                        ? "border-green-500 hover:border-green-600"
+                        : ""
+                    }
+                  >
+                    <Save className="h-4 w-4 mr-2" />
+                    Save Search
+                  </Button>
                 </>
               ) : (
                 <>
@@ -415,39 +438,42 @@ export function JobSearchPage() {
                 </>
               )}
             </div>
-            
+
             {/* Action Buttons */}
             <div className="flex gap-3 items-center">
               <Button
                 onClick={() => handleRunSearch()}
-                disabled={!keywords || selectedBoards.length === 0 || runningSearchId === 'new'}
-              >
-                <Play className="h-4 w-4 mr-2" />
-                {runningSearchId === 'new' ? "Starting..." : "Run Search"}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={handleSaveSearch}
-                disabled={!searchName || !keywords || selectedBoards.length === 0}
-                className={
-                  editingSearch && hasUnsavedChanges
-                    ? "border-yellow-500 hover:border-yellow-600"
-                    : editingSearch && !hasUnsavedChanges
-                    ? "border-green-500 hover:border-green-600"
-                    : ""
+                disabled={
+                  !keywords ||
+                  selectedBoards.length === 0 ||
+                  runningSearchId === "new"
                 }
               >
-                <Save className="h-4 w-4 mr-2" />
-                {editingSearch ? "Update Search" : "Save Search"}
+                <Play className="h-4 w-4 mr-2" />
+                {runningSearchId === "new" ? "Starting..." : "Run Search"}
               </Button>
-              
+              {!editingSearch && (
+                <Button
+                  variant="outline"
+                  onClick={handleSaveSearch}
+                  disabled={
+                    !searchName || !keywords || selectedBoards.length === 0
+                  }
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  Save Search
+                </Button>
+              )}
+
               <div className="ml-auto flex gap-3">
                 <Button variant="outline" className="h-auto py-2 px-4">
                   <div className="flex items-center gap-2">
                     <Upload className="h-5 w-5" />
                     <div className="text-left">
                       <div className="text-sm font-medium">Upload Resume</div>
-                      <div className="text-xs text-muted-foreground">PDF, DOC, DOCX</div>
+                      <div className="text-xs text-muted-foreground">
+                        PDF, DOC, DOCX
+                      </div>
                     </div>
                   </div>
                 </Button>
@@ -456,7 +482,9 @@ export function JobSearchPage() {
                     <Linkedin className="h-5 w-5" />
                     <div className="text-left">
                       <div className="text-sm font-medium">Import LinkedIn</div>
-                      <div className="text-xs text-muted-foreground">Auto-populate</div>
+                      <div className="text-xs text-muted-foreground">
+                        Auto-populate
+                      </div>
                     </div>
                   </div>
                 </Button>
@@ -851,13 +879,15 @@ export function JobSearchPage() {
                             </Button>
                           </>
                         )}
-                        <Button 
+                        <Button
                           size="sm"
                           onClick={() => handleRunSearch(search)}
                           disabled={runningSearchId === search.searchId}
                         >
                           <Play className="h-4 w-4 mr-2" />
-                          {runningSearchId === search.searchId ? "Starting..." : "Run"}
+                          {runningSearchId === search.searchId
+                            ? "Starting..."
+                            : "Run"}
                         </Button>
                       </div>
                     </div>

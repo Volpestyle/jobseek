@@ -7,10 +7,36 @@ import {
 } from '../db/dynamodb.service'
 
 /**
+ * Common types used across storage services
+ */
+export type StorageOperations = 
+  | 'getUserProfile' | 'saveUserProfile' | 'updateUserProfile'
+  | 'saveJob' | 'getSavedJob' | 'getSavedJobs' | 'deleteSavedJob'
+  | 'saveSearch' | 'getSavedSearch' | 'getSavedSearches' | 'updateSearchLastRun' | 'updateSavedSearch' | 'deleteSavedSearch'
+  | 'saveApplication' | 'getApplication' | 'getApplications' | 'updateApplicationStatus'
+  | 'createJobBoard' | 'getJobBoard' | 'getJobBoards' | 'addJobToBoard' | 'removeJobFromBoard' | 'deleteJobBoard'
+  | 'initializeUserJobBoards' | 'isUserInitialized' | 'getUserSavedBoards' | 'saveUserBoardPreference'
+  | 'initializeDefaultSearches' | 'hasInitializedSearches' | 'markSearchesInitialized'
+
+/**
+ * Base storage interface defining common operations
+ * Extended by both server-side and client-side interfaces
+ * 
+ * This interface serves as a type-safe contract ensuring both
+ * StorageService and ClientStorageService implement the same
+ * set of operations, with different method signatures
+ */
+export interface BaseStorageService {
+  // Marker interface to ensure type compatibility
+  // All storage services must implement the operations defined in StorageOperations
+  readonly _operations?: StorageOperations
+}
+
+/**
  * Server-side storage interface with explicit userId parameters
  * Used by API routes and server-side code
  */
-export interface StorageService {
+export interface StorageService extends BaseStorageService {
   // User Profile
   getUserProfile?(userId: string): Promise<UserProfile | null>
   saveUserProfile?(profile: UserProfile): Promise<UserProfile>
@@ -65,7 +91,7 @@ export interface StorageService {
  * Client-side storage interface that omits userId parameters
  * Used by React components through the auth context
  */
-export interface ClientStorageService {
+export interface ClientStorageService extends BaseStorageService {
   // User Profile
   getUserProfile?(): Promise<UserProfile | null>
   saveUserProfile?(profile: Omit<UserProfile, 'userId'>): Promise<UserProfile>

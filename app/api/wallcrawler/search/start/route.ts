@@ -28,24 +28,24 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check rate limit for all users (authenticated and anonymous)
-    const rateLimit = await checkSearchRateLimit(request)
-    if (!rateLimit.allowed) {
-      return NextResponse.json(
-        {
-          error: "Rate limit exceeded",
-          retryAfter: Math.ceil((rateLimit.resetTime - Date.now()) / 1000)
-        },
-        {
-          status: 429,
-          headers: {
-            'X-RateLimit-Limit': rateLimit.limit.toString(),
-            'X-RateLimit-Remaining': rateLimit.remaining.toString(),
-            'X-RateLimit-Reset': new Date(rateLimit.resetTime).toISOString(),
-          }
-        }
-      )
-    }
+    // * Check rate limit for all users (authenticated and anonymous)
+    // const rateLimit = await checkSearchRateLimit(request)
+    // if (!rateLimit.allowed) {
+    //   return NextResponse.json(
+    //     {
+    //       error: "Rate limit exceeded",
+    //       retryAfter: Math.ceil((rateLimit.resetTime - Date.now()) / 1000)
+    //     },
+    //     {
+    //       status: 429,
+    //       headers: {
+    //         'X-RateLimit-Limit': rateLimit.limit.toString(),
+    //         'X-RateLimit-Remaining': rateLimit.remaining.toString(),
+    //         'X-RateLimit-Reset': new Date(rateLimit.resetTime).toISOString(),
+    //       }
+    //     }
+    //   )
+    // }
 
     // For anonymous users, validate JWT token
     if (!session?.user) {
@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
     let userId: string;
     if (session?.user) {
       // Authenticated user
-      userId = session.user.id;
+      userId = session.user.id || '';
       userMetadata.userId = userId;
       userMetadata.userEmail = session.user.email;
       userMetadata.isAnonymous = false;

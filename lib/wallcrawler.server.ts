@@ -1,5 +1,6 @@
 import { Stagehand } from '@wallcrawler/stagehand';
 import { z } from 'zod';
+import { DEFAULT_JOB_BOARDS } from './constants/default-job-boards';
 
 export interface JobSearchParams {
   keywords: string;
@@ -22,11 +23,6 @@ export class WallcrawlerService {
     let stagehand: Stagehand | null = null;
 
     try {
-      // Debug: Log environment variables
-      console.log('WALLCRAWLER_BASE_URL:', process.env.WALLCRAWLER_BASE_URL);
-      console.log('WALLCRAWLER_API_KEY exists:', !!process.env.WALLCRAWLER_API_KEY);
-      console.log('WALLCRAWLER_PROJECT_ID:', process.env.WALLCRAWLER_PROJECT_ID);
-
       // Initialize Stagehand
       stagehand = new Stagehand({
         env: 'WALLCRAWLER',
@@ -43,22 +39,19 @@ export class WallcrawlerService {
           projectId: process.env.WALLCRAWLER_PROJECT_ID || 'jobseek-dev',
           userMetadata: params.userMetadata || {},
         },
+        useAPI: false
       });
 
       const { sessionId, debugUrl } = await stagehand.init();
       const page = stagehand.page;
 
-      // Navigate to job board
-      const jobBoardUrls: Record<string, string> = {
-        linkedin: 'https://www.linkedin.com/jobs',
-        indeed: 'https://www.indeed.com',
-        glassdoor: 'https://www.glassdoor.com/Job/index.htm',
-      };
-
-      const url = jobBoardUrls[params.jobBoard];
-      if (!url) {
+      // Find the job board configuration
+      const jobBoardConfig = DEFAULT_JOB_BOARDS.find(board => board.id === params.jobBoard);
+      if (!jobBoardConfig) {
         throw new Error(`Unsupported job board: ${params.jobBoard}`);
       }
+
+      const url = jobBoardConfig.url;
 
       await page.goto(url);
 

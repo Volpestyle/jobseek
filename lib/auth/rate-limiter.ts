@@ -17,7 +17,7 @@ const client = new DynamoDBClient({
 })
 
 const docClient = DynamoDBDocumentClient.from(client)
-const USERS_TABLE = process.env.DYNAMODB_USERS_TABLE || "jobseek-users"
+const USERS_TABLE = process.env.DYNAMODB_USERS_TABLE || "jobseek-users-dev"
 
 export interface RateLimitConfig {
   windowMs: number // Time window in milliseconds
@@ -53,17 +53,17 @@ export const RATE_LIMIT_TIERS = {
 // Check if user has premium subscription
 async function isPremiumUser(userId: string | null): Promise<boolean> {
   if (!userId) return false
-  
+
   try {
     const { dynamodbService } = await import("@/lib/db/dynamodb.service")
     const profile = await dynamodbService.getUserProfile(userId)
-    
+
     // Check if user has active premium subscription
     if (profile?.subscriptionTier === 'premium' && profile.subscriptionExpiry) {
       const expiryDate = new Date(profile.subscriptionExpiry)
       return expiryDate > new Date()
     }
-    
+
     return false
   } catch (error) {
     console.error('Error checking premium status:', error)
@@ -79,7 +79,7 @@ async function checkRateLimit(
   const now = Date.now()
   const windowStart = Math.floor(now / config.windowMs) * config.windowMs
   const resetTime = windowStart + config.windowMs
-  
+
   // Use identifier as userId and construct dataType for rate limit
   const userId = identifier
   const dataType = `RATE_LIMIT#${windowStart}`
@@ -159,7 +159,7 @@ async function checkRateLimit(
 
     try {
       const { Attributes } = await docClient.send(updateCommand)
-      
+
       return {
         allowed: true,
         limit: config.maxRequests,
@@ -180,9 +180,8 @@ async function checkRateLimit(
     }
   } catch (error) {
     console.error("Rate limit check failed:", error)
-    // On error, allow the request but log it
     return {
-      allowed: true,
+      allowed: false,
       limit: config.maxRequests,
       remaining: config.maxRequests,
       resetTime,
@@ -196,7 +195,7 @@ async function getRateLimitConfig(
   limitType: 'session' | 'search' | 'apply'
 ): Promise<{ identifier: string; config: RateLimitConfig }> {
   const userInfo = await getUserFromRequest(request)
-  
+
   if (!userInfo) {
     // No user identified, use IP-based fallback
     const ip = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown'
@@ -205,12 +204,12 @@ async function getRateLimitConfig(
       config: RATE_LIMIT_TIERS.anonymous[limitType],
     }
   }
-  
+
   if (userInfo.isAuthenticated && userInfo.userId) {
     // Authenticated user
     const isPremium = await isPremiumUser(userInfo.userId)
     const tier = isPremium ? 'premium' : 'authenticated'
-    
+
     return {
       identifier: `${limitType}:user:${userInfo.userId}`,
       config: RATE_LIMIT_TIERS[tier][limitType],

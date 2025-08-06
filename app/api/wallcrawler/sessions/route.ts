@@ -20,13 +20,13 @@ export async function GET(request: NextRequest) {
     const query = JSON.stringify({ userId: user.userId })
 
     // List sessions filtered by user metadata
-    let sessions
+    let response
     try {
-      sessions = await wallcrawler.sessions.list({
+      response = await wallcrawler.sessions.list({
         q: query,
         status: 'RUNNING', // Only get active sessions
       })
-      console.log('Successfully listed sessions:', sessions.length)
+      console.log('Successfully listed sessions:', response)
     } catch (error: any) {
       console.error('Failed to list sessions:', {
         status: error.status,
@@ -37,6 +37,9 @@ export async function GET(request: NextRequest) {
       throw error
     }
 
+    // Extract sessions array from response
+    const sessions = Array.isArray(response) ? response : response?.data || []
+    
     // Format sessions for frontend
     const formattedSessions = sessions.map(session => ({
       id: session.id,
@@ -82,13 +85,13 @@ export async function POST(request: NextRequest) {
     console.log('Listing sessions for user:', { userId: user.userId, query })
 
     // List sessions filtered by user metadata
-    let sessions;
+    let response;
     try {
-      sessions = await wallcrawler.sessions.list({
+      response = await wallcrawler.sessions.list({
         q: query,
         status: 'RUNNING',
       })
-      console.log('Successfully listed sessions:', sessions.length)
+      console.log('Successfully listed sessions:', response)
     } catch (error: any) {
       console.error('Failed to list sessions in POST:', {
         status: error.status,
@@ -99,8 +102,11 @@ export async function POST(request: NextRequest) {
       throw error
     }
 
+    // Extract sessions array from response
+    const sessions = Array.isArray(response) ? response : response?.data || []
+    
     // Format sessions for frontend
-    const formattedSessions = sessions?.map(session => ({
+    const formattedSessions = sessions.map(session => ({
       id: session.id,
       status: session.status,
       createdAt: session.createdAt,
