@@ -1,151 +1,103 @@
-# Jobseek - AI-Powered Job Search Platform
+# Jobseek Monorepo (pnpm)
 
-A Next.js application that uses Wallcrawler to automate job searching and applications across multiple job boards.
+Jobseek is a job search automation platform, designed to offload the repetitive nature of shifting through all the lame job slop on Linkedin, Monster, and other job boards, and help you find the jobs that are actually a good fit for you.
 
-## Tech Stack
+## How?
 
-- **Framework**: Next.js 15 with App Router
-- **UI**: Tailwind CSS + shadcn/ui components
-- **Authentication**: NextAuth.js with AWS Cognito (Google & X/Twitter OAuth)
-- **Database**: AWS DynamoDB
-- **File Storage**: AWS S3 (for resumes)
-- **Browser Automation**: Wallcrawler SDK
-- **Language**: TypeScript
+- Jobseek leverages [Wallcrawler](https://github.com/Volpestyle/wallcrawler) for headless browser automation and session management across job boards.
 
-## Features
+- Packages
+  - `@wallcrawler/stagehand`: drives automated browsing, actions, and extraction in `lib/wallcrawler.server.ts`
+  - `@wallcrawler/sdk`: session retrieval, listing, and debug links in API routes
+- Local setup
+  - This repo references sibling packages via pnpm links:
+    - `@wallcrawler/sdk` → `../wallcrawler/packages/sdk-node`
+    - `@wallcrawler/components` → `../wallcrawler/packages/components`
+    - `@wallcrawler/stagehand` → `../wallcrawler/packages/stagehand`
+  - Clone the [Wallcrawler](https://github.com/Volpestyle/wallcrawler) repo adjacent to this directory so these links resolve:
+    - `…/web/wallcrawler` and `…/web/jobseek` should be siblings
+- Key API routes
+  - `POST /api/wallcrawler/search/start`: starts a search with Stagehand and returns `{ sessionId, debugUrl, jobs }`
+  - `POST /api/wallcrawler/search/stream`: server-sent events stream of search progress and results
+  - `GET|POST /api/wallcrawler/sessions`: lists active sessions filtered by the current user
+  - `GET /api/wallcrawler/sessions/[sessionId]`: returns session details and saved results (authz enforced)
+  - `POST /api/wallcrawler/search`: retrieves session status and debugger URLs (authz enforced)
+- Environment variables
+  - SDK: `WALLCRAWLER_API_URL`, `WALLCRAWLER_API_KEY`
+  - Stagehand: `WALLCRAWLER_PROJECT_ID`, `WALLCRAWLER_API_KEY`, `ANTHROPIC_API_KEY`
 
-- 🔍 **Smart Job Search**: AI-powered search across LinkedIn, Indeed, and Glassdoor
-- 🤖 **Auto Apply**: Automatically apply to jobs matching your criteria
-- 📊 **Job Management**: Track applications, save jobs, and organize with boards
-- 🔄 **Active Searches**: Set up recurring searches that run automatically
-- 📄 **Resume Management**: Upload and manage multiple resumes
-- 👤 **Profile Management**: Manage your job seeker profile
-- 🌓 **Dark/Light Mode**: Full theme support
+This is a Next.js application with AWS infrastructure managed via AWS CDK. This repository is a pnpm workspace containing:
 
-## Project Structure
+- `@jobseek/app`: the Next.js 15 application (app router) and API routes
+- `@jobseek/cdk`: infrastructure-as-code for backend and app deployment
 
+For deeper details (architecture, auth, deployment, rate limiting), see the documents in `docs/` linked below.
+
+## Quick start
+
+- Install dependencies
+  ```bash
+  pnpm install
+  ```
+- Run the app locally
+  ```bash
+  pnpm dev
+  ```
+- Lint, build, and start
+  ```bash
+  pnpm lint
+  pnpm build
+  pnpm start
+  ```
+
+Prerequisites: Node.js 20+ and pnpm installed. Environment variables and service configuration are covered in the deployment guide.
+
+## Workspace layout
+
+- `app/` — Next.js app and API routes
+- `components/`, `hooks/`, `contexts/`, `lib/` — shared UI, hooks, context, utilities
+- `cdk/` — AWS CDK project (stacks, scripts, deployment helpers)
+- `docs/` — reference documentation
+- `public/`, `styles` (via `app/globals.css`) — assets and global styles
+
+## Infrastructure and deployment (CDK)
+
+Common commands are exposed at the root for convenience and delegate to `@jobseek/cdk`:
+
+- Synthesize and diff
+  ```bash
+  pnpm cdk:synth
+  pnpm cdk:diff
+  ```
+- Deploy backend (all environments)
+  ```bash
+  pnpm deploy:backend:dev
+  pnpm deploy:backend:staging
+  pnpm deploy:backend:prod
+  ```
+- Deploy Next.js hosting (all environments)
+  ```bash
+  pnpm deploy:nextjs:dev
+  pnpm deploy:nextjs:staging
+  pnpm deploy:nextjs:prod
+  ```
+
+You can also run any CDK scripts directly within the `cdk/` package:
+
+```bash
+pnpm --filter @jobseek/cdk deploy:dev
+pnpm --filter @jobseek/cdk deploy:staging
+pnpm --filter @jobseek/cdk deploy:prod
 ```
-jobseek/
-├── app/                    # Next.js App Router
-│   ├── api/               # API routes
-│   │   ├── auth/         # NextAuth routes
-│   │   ├── wallcrawler/  # Wallcrawler session management
-│   │   ├── jobs/         # Job-related endpoints
-│   │   ├── searches/     # Search management
-│   │   ├── boards/       # Job boards
-│   │   └── resume/       # Resume uploads
-│   ├── auth/             # Authentication pages
-│   ├── dashboard/        # Dashboard pages
-│   └── layout.tsx        # Root layout
-├── components/            # React components
-│   ├── ui/               # shadcn/ui components
-│   ├── pages/            # Page components
-│   └── figma/            # Figma-specific components
-├── lib/                   # Utility libraries
-│   ├── auth/             # Authentication config
-│   ├── db/               # DynamoDB service
-│   ├── storage/          # S3 service
-│   └── wallcrawler.server.ts # Wallcrawler service
-└── public/               # Static assets
-```
 
-## Setup Instructions
+Environment-specific configuration lives under `cdk/config/` (`dev.json`, `staging.json`, `prod.json`). Secrets and additional setup steps are covered in the deployment guide.
 
-1. **Clone the repository and install dependencies:**
-   ```bash
-   cd jobseek
-   npm install
-   ```
+## Documentation
 
-2. **Set up environment variables:**
-   Copy `.env.example` to `.env.local` and fill in your credentials:
-   ```bash
-   cp .env.example .env.local
-   ```
-
-3. **Configure AWS Cognito:**
-   - Create a User Pool in AWS Cognito
-   - Enable Google and X/Twitter as identity providers
-   - Configure OAuth 2.0 settings with callback URL: `http://localhost:3000/api/auth/callback/cognito`
-
-4. **Set up AWS resources:**
-   - Create DynamoDB tables (see table names in `.env.example`)
-   - Create an S3 bucket for resume storage
-   - Configure IAM permissions for your AWS credentials
-
-5. **Configure Wallcrawler:**
-   - Get your Wallcrawler API key and project ID
-   - Add them to your `.env.local` file
-
-6. **Run the development server:**
-   ```bash
-   npm run dev
-   ```
-
-## API Endpoints
-
-### Authentication
-- `GET/POST /api/auth/*` - NextAuth.js endpoints
-
-### Wallcrawler Sessions
-- `POST /api/wallcrawler/session` - Create new browser session
-- `GET /api/wallcrawler/session?sessionId={id}` - Get session details
-- `DELETE /api/wallcrawler/session?sessionId={id}` - Terminate session
-
-### Job Search
-- `POST /api/wallcrawler/search` - Search for jobs
-- `POST /api/wallcrawler/apply` - Apply to a job
-
-### Job Management
-- `GET /api/jobs/saved` - Get saved jobs
-- `POST /api/jobs/saved` - Save a job
-- `DELETE /api/jobs/saved?jobId={id}` - Delete saved job
-
-### Search Management
-- `GET /api/searches/saved` - Get saved searches
-- `POST /api/searches/saved` - Save a search
-- `DELETE /api/searches/saved?searchId={id}` - Delete search
-
-### Job Boards
-- `GET /api/boards` - Get job boards
-- `POST /api/boards` - Create board
-- `PUT /api/boards` - Add/remove jobs from board
-- `DELETE /api/boards?boardId={id}` - Delete board
-
-### Resume Management
-- `POST /api/resume/upload` - Get upload URL
-- `GET /api/resume/upload` - List resumes
-- `DELETE /api/resume/upload?s3Key={key}` - Delete resume
-
-## Data Storage
-
-### Browser Storage
-- Wallcrawler session data
-- Temporary search results
-
-### DynamoDB
-- User profiles (via NextAuth)
-- Saved jobs
-- Saved searches
-- Job boards
-- Application tracking
-
-### S3
-- Resume files
-
-## Development Notes
-
-- The app uses Next.js App Router with server components
-- Authentication is handled via middleware
-- All API routes require authentication except `/api/auth/*`
-- Wallcrawler handles all browser automation in its own infrastructure
-- File uploads use pre-signed S3 URLs for direct browser uploads
-
-## Deployment
-
-This app is ready for deployment but requires:
-1. AWS infrastructure setup (Cognito, DynamoDB, S3)
-2. Environment variables configuration
-3. Wallcrawler production credentials
-
-Consider using AWS CDK or Terraform for infrastructure as code (not included in this phase).
+- Architecture overview — [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- Authentication architecture — [`docs/AUTH_ARCHITECTURE.md`](docs/AUTH_ARCHITECTURE.md)
+- OAuth setup — [`docs/OAUTH_SETUP.md`](docs/OAUTH_SETUP.md)
+- JWT token lifecycle — [`docs/jwt-token-lifecycle.md`](docs/jwt-token-lifecycle.md)
+- Rate limiting — [`docs/RATE_LIMITING.md`](docs/RATE_LIMITING.md)
+- Deployment guide — [`docs/DEPLOYMENT_GUIDE.md`](docs/DEPLOYMENT_GUIDE.md)
+- Architecture diagram — [`docs/architecture-diagram.png`](docs/architecture-diagram.png)
