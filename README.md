@@ -1,4 +1,4 @@
-# Jobseek Monorepo (pnpm)
+# Jobseek
 
 Jobseek is a job search automation platform, designed to offload the repetitive nature of shifting through all the lame job slop on Linkedin, Monster, and other job boards, and help you find the jobs that are actually a good fit for you.
 
