@@ -48,6 +48,7 @@ interface ButtonProps
     VariantProps<typeof buttonVariants> {
   asChild?: boolean;
   centerHover?: boolean;
+  align?: "center" | "start";
   // Re-add HTML event handlers with correct types
   onDrag?: React.DragEventHandler<HTMLButtonElement>;
   onDragEnd?: React.DragEventHandler<HTMLButtonElement>;
@@ -61,6 +62,7 @@ function Button({
   size,
   asChild = false,
   centerHover = false,
+  align = "center",
   onDrag,
   onDragEnd,
   onDragStart,
@@ -104,8 +106,8 @@ function Button({
 
   const getHoverScale = () => {
     if (variant === "link") return 1;
-    if (centerHover) return 1.1;
-    if (size === "icon" || size === "sm") return 1.03;
+    if (centerHover) return 1.2;
+    if (size === "icon" || size === "sm") return 1.05;
     if (size === "lg") return 1.02;
     return 1.025;
   };
@@ -208,7 +210,13 @@ function Button({
           }
         />
       )}
-      <span className={cn("relative z-10 flex items-center", size !== "icon" && "w-full")}>
+      <span
+        className={cn(
+          "relative z-10 flex items-center",
+          align === "center" ? "justify-center" : "justify-start",
+          size !== "icon" && "w-full"
+        )}
+      >
         {props.children}
       </span>
     </MotionButton>

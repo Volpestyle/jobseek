@@ -5,7 +5,8 @@ import {
   SavedSearch,
   JobApplication,
   JobBoard,
-  UserProfile
+  UserProfile,
+  JobSearchResult
 } from '../db/dynamodb.service'
 import { localStorageService } from './local-storage.service'
 import { ClientStorageService } from './storage.interface'
@@ -405,6 +406,92 @@ class ClientStorageServiceImpl implements ClientStorageService {
       })
     } else {
       await localStorageService.markSearchesInitialized('anonymous')
+    }
+  }
+
+  // Job Search Results - Only used for anonymous users
+  // Authenticated users have results saved automatically server-side
+  async saveJobSearchResults(results: Omit<JobSearchResult, 'userId'>): Promise<JobSearchResult> {
+    if (this.isAuthenticated) {
+      // For authenticated users, results are saved server-side during search
+      // This method should not be called for authenticated users
+      console.warn('saveJobSearchResults called for authenticated user - results are saved server-side')
+      return {
+        ...results,
+        userId: this.userId!,
+        createdAt: results.createdAt || new Date().toISOString(),
+        updatedAt: results.updatedAt || new Date().toISOString(),
+      } as JobSearchResult
+    }
+    
+    // For anonymous users, save to localStorage
+    const resultsData = {
+      ...results,
+      userId: 'anonymous',
+      createdAt: results.createdAt || new Date().toISOString(),
+      updatedAt: results.updatedAt || new Date().toISOString(),
+    }
+    
+    return localStorageService.saveJobSearchResults(resultsData as JobSearchResult)
+  }
+
+  async getJobSearchResults(searchSessionId: string): Promise<JobSearchResult | null> {
+    if (this.isAuthenticated) {
+      // For authenticated users, fetch from database
+      try {
+        const data = await this.fetchAPI(`/api/jobs/search-results/${searchSessionId}`)
+        return data.result || null
+      } catch (error) {
+        console.error('Failed to fetch job search results:', error)
+        return null
+      }
+    } else {
+      // For anonymous users, get from localStorage
+      return localStorageService.getJobSearchResults('anonymous', searchSessionId)
+    }
+  }
+
+  async updateJobSearchResults(
+    searchSessionId: string,
+    updates: Partial<Omit<JobSearchResult, 'userId'>>
+  ): Promise<JobSearchResult> {
+    if (this.isAuthenticated) {
+      // For authenticated users, this shouldn't be called as updates happen server-side
+      console.warn('updateJobSearchResults called for authenticated user - updates happen server-side')
+      const current = await this.getJobSearchResults(searchSessionId)
+      if (!current) {
+        throw new Error('Job search results not found')
+      }
+      return {
+        ...current,
+        ...updates,
+        updatedAt: new Date().toISOString(),
+      }
+    }
+    
+    // For anonymous users, update in localStorage
+    const updateData = {
+      ...updates,
+      userId: 'anonymous',
+      updatedAt: new Date().toISOString(),
+    }
+    
+    return localStorageService.updateJobSearchResults('anonymous', searchSessionId, updateData as Partial<JobSearchResult>)
+  }
+
+  async getAllJobSearchResults(): Promise<JobSearchResult[]> {
+    if (this.isAuthenticated) {
+      // For authenticated users, fetch from database
+      try {
+        const data = await this.fetchAPI('/api/jobs/search-results')
+        return data.results || []
+      } catch (error) {
+        console.error('Failed to fetch all job search results:', error)
+        return []
+      }
+    } else {
+      // For anonymous users, get from localStorage
+      return localStorageService.getAllJobSearchResults('anonymous')
     }
   }
 }

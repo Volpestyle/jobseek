@@ -28,7 +28,8 @@ const DATA_TYPES = {
   APPLICATION: "APPLICATION#",
   JOB_BOARD: "BOARD#",
   PREFERENCES: "PREFERENCES#MAIN",
-  RATE_LIMIT: "RATE_LIMIT#"
+  RATE_LIMIT: "RATE_LIMIT#",
+  JOB_SEARCH_RESULT: "JOB_SEARCH_RESULT#"
 } as const
 
 // User Profile Interface
@@ -116,7 +117,7 @@ export interface SavedSearch {
   }
   createdAt: string
   updatedAt: string
-  isActive: boolean
+  isActive?: boolean
   lastRunAt?: string
   runFrequency?: string
   isDefault?: boolean
@@ -179,6 +180,38 @@ export interface UserPreferences {
   }
   createdAt: string
   updatedAt: string
+}
+
+export interface ExtractedJob {
+  jobId: string
+  title: string
+  company: string
+  location: string
+  salary?: string
+  url: string
+  description: string
+  postedDate?: string
+}
+
+export interface JobSearchResult {
+  userId: string
+  searchSessionId: string
+  jobs: ExtractedJob[]
+  searchParams: {
+    keywords: string
+    location: string
+    jobBoard: string
+  }
+  status: 'pending' | 'running' | 'completed' | 'error'
+  totalJobsFound: number
+  createdAt: string
+  updatedAt: string
+  sessionMetadata?: {
+    debugUrl?: string
+    region?: string
+    startedAt?: string
+    endedAt?: string
+  }
 }
 
 export class DynamoDBSingleTableService {
@@ -600,6 +633,68 @@ export class DynamoDBSingleTableService {
       }
     })
     await docClient.send(command)
+  }
+
+  // Job Search Results Methods
+  async saveJobSearchResults(results: JobSearchResult): Promise<JobSearchResult> {
+    const now = new Date().toISOString()
+    const item = {
+      ...results,
+      dataType: `${DATA_TYPES.JOB_SEARCH_RESULT}${results.searchSessionId}`,
+      createdAt: results.createdAt || now,
+      updatedAt: now
+    }
+
+    const command = new PutCommand({
+      TableName: USERS_TABLE,
+      Item: item
+    })
+
+    await docClient.send(command)
+    return item
+  }
+
+  async getJobSearchResults(userId: string, searchSessionId: string): Promise<JobSearchResult | null> {
+    const command = new GetCommand({
+      TableName: USERS_TABLE,
+      Key: {
+        userId,
+        dataType: `${DATA_TYPES.JOB_SEARCH_RESULT}${searchSessionId}`
+      }
+    })
+    const response = await docClient.send(command)
+    return response.Item as JobSearchResult || null
+  }
+
+  async updateJobSearchResults(userId: string, searchSessionId: string, updates: Partial<JobSearchResult>): Promise<JobSearchResult> {
+    const currentResults = await this.getJobSearchResults(userId, searchSessionId)
+    if (!currentResults) {
+      throw new Error('Job search results not found')
+    }
+
+    const updatedResults = {
+      ...currentResults,
+      ...updates,
+      userId,
+      searchSessionId,
+      updatedAt: new Date().toISOString()
+    }
+
+    return this.saveJobSearchResults(updatedResults)
+  }
+
+  async getAllJobSearchResults(userId: string): Promise<JobSearchResult[]> {
+    const command = new QueryCommand({
+      TableName: USERS_TABLE,
+      KeyConditionExpression: "userId = :userId AND begins_with(dataType, :dataType)",
+      ExpressionAttributeValues: {
+        ":userId": userId,
+        ":dataType": DATA_TYPES.JOB_SEARCH_RESULT
+      }
+    })
+
+    const response = await docClient.send(command)
+    return (response.Items || []) as JobSearchResult[]
   }
 
   // User Preferences Methods

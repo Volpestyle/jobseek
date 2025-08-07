@@ -110,24 +110,6 @@ export function useSavedSearches() {
     }
   }, [storage, initializeAndLoadSearches])
 
-  // Update search last run
-  const updateSearchLastRun = useCallback(async (searchId: string) => {
-    if (!storage) return
-
-    try {
-      await storage.updateSearchLastRun(searchId)
-      
-      // Update local state
-      setSearches(prev => prev.map(search => 
-        search.searchId === searchId 
-          ? { ...search, lastRunAt: new Date().toISOString() }
-          : search
-      ))
-    } catch (err) {
-      console.error('Failed to update search last run:', err)
-      throw err
-    }
-  }, [storage])
 
   return {
     searches,
@@ -137,7 +119,6 @@ export function useSavedSearches() {
     saveSearch,
     updateSearch,
     deleteSearch,
-    updateSearchLastRun,
     refreshSearches: initializeAndLoadSearches,
   }
 }

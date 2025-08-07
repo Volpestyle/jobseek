@@ -47,8 +47,8 @@ export function DataMigrationDialog({ open, onOpenChange }: DataMigrationDialogP
   }
 
   const handleSkip = () => {
-    // Clear local storage if user chooses to skip
-    localStorage.clear()
+    // Mark that user chose to skip migration
+    localStorage.setItem('jobseek_migration_skipped', 'true')
     onOpenChange(false)
   }
 
@@ -87,7 +87,11 @@ export function DataMigrationDialog({ open, onOpenChange }: DataMigrationDialogP
                 <li>Your search configurations</li>
                 <li>Application history</li>
                 <li>Custom job boards</li>
+                <li>Job search results from recent sessions</li>
               </ul>
+              <p className="text-xs mt-3">
+                You can always access this data later if you choose to skip now.
+              </p>
             </div>
           )}
         </div>

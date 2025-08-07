@@ -3,7 +3,8 @@ import {
   SavedSearch,
   JobApplication,
   JobBoard,
-  UserProfile
+  UserProfile,
+  JobSearchResult
 } from '../db/dynamodb.service'
 
 /**
@@ -17,6 +18,7 @@ export type StorageOperations =
   | 'createJobBoard' | 'getJobBoard' | 'getJobBoards' | 'addJobToBoard' | 'removeJobFromBoard' | 'deleteJobBoard'
   | 'initializeUserJobBoards' | 'isUserInitialized' | 'getUserSavedBoards' | 'saveUserBoardPreference'
   | 'initializeDefaultSearches' | 'hasInitializedSearches' | 'markSearchesInitialized'
+  | 'saveJobSearchResults' | 'getJobSearchResults' | 'updateJobSearchResults' | 'getAllJobSearchResults'
 
 /**
  * Base storage interface defining common operations
@@ -85,6 +87,12 @@ export interface StorageService extends BaseStorageService {
   initializeDefaultSearches?(userId: string, searches: Omit<SavedSearch, 'userId'>[]): Promise<void>
   hasInitializedSearches?(userId: string): Promise<boolean>
   markSearchesInitialized?(userId: string): Promise<void>
+
+  // Job Search Results
+  saveJobSearchResults(results: JobSearchResult): Promise<JobSearchResult>
+  getJobSearchResults(userId: string, searchSessionId: string): Promise<JobSearchResult | null>
+  updateJobSearchResults(userId: string, searchSessionId: string, updates: Partial<JobSearchResult>): Promise<JobSearchResult>
+  getAllJobSearchResults(userId: string): Promise<JobSearchResult[]>
 }
 
 /**
@@ -135,4 +143,10 @@ export interface ClientStorageService extends BaseStorageService {
   initializeDefaultSearches(searches: Omit<SavedSearch, 'userId'>[]): Promise<void>
   hasInitializedSearches(): Promise<boolean>
   markSearchesInitialized(): Promise<void>
+
+  // Job Search Results
+  saveJobSearchResults(results: Omit<JobSearchResult, 'userId'>): Promise<JobSearchResult>
+  getJobSearchResults(searchSessionId: string): Promise<JobSearchResult | null>
+  updateJobSearchResults(searchSessionId: string, updates: Partial<Omit<JobSearchResult, 'userId'>>): Promise<JobSearchResult>
+  getAllJobSearchResults(): Promise<JobSearchResult[]>
 }

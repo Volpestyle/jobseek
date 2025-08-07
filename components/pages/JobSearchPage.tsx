@@ -55,6 +55,7 @@ import { SavedSearch } from "@/lib/storage/storage.service";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useAnonymousSession } from "@/hooks/use-anonymous-session";
+import { AnimatedSaveButton } from "../ui/animated-save-button";
 
 export function JobSearchPage() {
   const {
@@ -92,8 +93,6 @@ export function JobSearchPage() {
   const [isRemote, setIsRemote] = useState(false);
   const [isHybrid, setIsHybrid] = useState(false);
   const [isVisaSponsor, setIsVisaSponsor] = useState(false);
-  const [runFrequency, setRunFrequency] = useState("daily");
-  const [isActive, setIsActive] = useState(true);
 
   // Other state
   const [skills, setSkills] = useState<string[]>([
@@ -148,8 +147,6 @@ export function JobSearchPage() {
           false) ||
       isHybrid !== (editingSearch.workPreferences?.hybrid || false) ||
       isVisaSponsor !== (editingSearch.workPreferences?.visaSponsor || false) ||
-      runFrequency !== (editingSearch.runFrequency || "daily") ||
-      isActive !== editingSearch.isActive ||
       JSON.stringify(skills) !==
         JSON.stringify(
           editingSearch.skills || editingSearch.filters?.skills || []
@@ -171,8 +168,6 @@ export function JobSearchPage() {
     isRemote,
     isHybrid,
     isVisaSponsor,
-    runFrequency,
-    isActive,
     skills,
   ]);
 
@@ -195,8 +190,6 @@ export function JobSearchPage() {
     );
     setIsHybrid(search.workPreferences?.hybrid || false);
     setIsVisaSponsor(search.workPreferences?.visaSponsor || false);
-    setRunFrequency(search.runFrequency || "daily");
-    setIsActive(search.isActive);
     setSkills(search.skills || search.filters?.skills || []);
     setActiveTab("new-search");
     console.log("Active tab set to:", "new-search");
@@ -218,8 +211,6 @@ export function JobSearchPage() {
     setIsRemote(false);
     setIsHybrid(false);
     setIsVisaSponsor(false);
-    setRunFrequency("daily");
-    setIsActive(true);
     setSkills(["React", "TypeScript", "Node.js"]);
     setHasUnsavedChanges(false);
   };
@@ -248,8 +239,6 @@ export function JobSearchPage() {
           hybrid: isHybrid,
           visaSponsor: isVisaSponsor,
         },
-        runFrequency,
-        isActive,
         isEditable: true,
       };
 
@@ -712,42 +701,6 @@ export function JobSearchPage() {
               </CardContent>
             </Card>
 
-            {/* Advanced Settings */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Search Settings</CardTitle>
-                <CardDescription>
-                  Configure how often this search runs
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="run-frequency">Run Frequency</Label>
-                  <Select value={runFrequency} onValueChange={setRunFrequency}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="hourly">Every Hour</SelectItem>
-                      <SelectItem value="daily">Daily</SelectItem>
-                      <SelectItem value="weekly">Weekly</SelectItem>
-                      <SelectItem value="manual">Manual Only</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="is-active"
-                    checked={isActive}
-                    onCheckedChange={(checked) =>
-                      setIsActive(checked as boolean)
-                    }
-                  />
-                  <Label htmlFor="is-active">Active (run automatically)</Label>
-                </div>
-              </CardContent>
-            </Card>
           </div>
 
           {/* Job Boards Selection */}
@@ -836,21 +789,6 @@ export function JobSearchPage() {
                         </p>
                         <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
                           <span>{search.jobBoards.length} job boards</span>
-                          <span>•</span>
-                          <span className="flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {search.runFrequency}
-                          </span>
-                          <span>•</span>
-                          <span
-                            className={
-                              search.isActive
-                                ? "text-green-600"
-                                : "text-gray-500"
-                            }
-                          >
-                            {search.isActive ? "Active" : "Paused"}
-                          </span>
                         </div>
                       </div>
                       <div className="flex gap-2">
@@ -961,24 +899,11 @@ export function JobSearchPage() {
                               {board.description}
                             </p>
                           </div>
-                          <Button
-                            variant={saved ? "default" : "outline"}
-                            size="sm"
+                          <AnimatedSaveButton
+                            isSaved={saved}
                             onClick={() => toggleBoardSaved(board.id)}
                             disabled={boardsLoading}
-                          >
-                            {saved ? (
-                              <>
-                                <Star className="h-4 w-4 mr-2" />
-                                Saved
-                              </>
-                            ) : (
-                              <>
-                                <StarOff className="h-4 w-4 mr-2" />
-                                Save
-                              </>
-                            )}
-                          </Button>
+                          />
                         </div>
                       );
                     })}

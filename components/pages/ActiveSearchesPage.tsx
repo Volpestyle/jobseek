@@ -1,34 +1,39 @@
-'use client'
+"use client";
 
-import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
-import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
-import { Progress } from '../ui/progress';
-import { Avatar, AvatarFallback } from '../ui/avatar';
-import { 
-  PlayCircle, 
-  Pause, 
-  Square, 
-  Eye, 
+import React, { useState, useEffect } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "../ui/card";
+import { Button } from "../ui/button";
+import { Badge } from "../ui/badge";
+import { Progress } from "../ui/progress";
+import { Avatar, AvatarFallback } from "../ui/avatar";
+import {
+  PlayCircle,
+  Pause,
+  Square,
+  Eye,
   MoreHorizontal,
   Clock,
   MapPin,
   Briefcase,
   TrendingUp,
-  Search
-} from 'lucide-react';
-import { SearchDetailView } from '../SearchDetailView';
-import { useSession } from 'next-auth/react';
-import { useAnonymousSession } from '@/hooks/use-anonymous-session';
-import { useRouter } from 'next/navigation';
+  Search,
+} from "lucide-react";
+import { useSession } from "next-auth/react";
+import { useAnonymousSession } from "@/hooks/use-anonymous-session";
+import { useRouter } from "next/navigation";
+import { ErrorAlert } from "../ui/error-alert";
 
 export function ActiveSearchesPage() {
-  const [selectedSearch, setSelectedSearch] = useState<string | null>(null);
   const [sessions, setSessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+
   const { data: authSession } = useSession();
   const { listSessions, anonymousId } = useAnonymousSession();
   const router = useRouter();
@@ -47,7 +52,7 @@ export function ActiveSearchesPage() {
       const sessionList = await listSessions();
       setSessions(sessionList || []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(err instanceof Error ? err.message : "An error occurred");
       setSessions([]);
     } finally {
       setLoading(false);
@@ -57,62 +62,79 @@ export function ActiveSearchesPage() {
   const mockActiveSearches = [
     {
       id: 1,
-      name: 'Senior Frontend Developer',
-      status: 'running',
+      name: "Senior Frontend Developer",
+      status: "running",
       progress: 75,
       jobsFound: 42,
       applicationsSubmitted: 8,
-      boards: ['LinkedIn', 'Indeed', 'Glassdoor'],
-      location: 'Remote',
-      salary: '$120k - $180k',
-      duration: '2h 15m',
-      estimatedRemaining: '45m',
-      thumbnail: 'https://images.unsplash.com/photo-1551650975-87deedd944c3?w=400&h=300&fit=crop'
+      boards: ["LinkedIn", "Indeed", "Glassdoor"],
+      location: "Remote",
+      salary: "$120k - $180k",
+      duration: "2h 15m",
+      estimatedRemaining: "45m",
+      thumbnail:
+        "https://images.unsplash.com/photo-1551650975-87deedd944c3?w=400&h=300&fit=crop",
     },
     {
       id: 2,
-      name: 'React Engineer Remote',
-      status: 'running',
+      name: "React Engineer Remote",
+      status: "running",
       progress: 50,
       jobsFound: 28,
       applicationsSubmitted: 5,
-      boards: ['AngelList', 'RemoteOK'],
-      location: 'Worldwide Remote',
-      salary: '$100k - $160k',
-      duration: '1h 32m',
-      estimatedRemaining: '1h 20m',
-      thumbnail: 'https://images.unsplash.com/photo-1571171637578-41bc2dd41cd2?w=400&h=300&fit=crop'
+      boards: ["AngelList", "RemoteOK"],
+      location: "Worldwide Remote",
+      salary: "$100k - $160k",
+      duration: "1h 32m",
+      estimatedRemaining: "1h 20m",
+      thumbnail:
+        "https://images.unsplash.com/photo-1571171637578-41bc2dd41cd2?w=400&h=300&fit=crop",
     },
     {
       id: 3,
-      name: 'Full Stack Developer',
-      status: 'paused',
+      name: "Full Stack Developer",
+      status: "paused",
       progress: 30,
       jobsFound: 77,
       applicationsSubmitted: 12,
-      boards: ['Stack Overflow', 'Dice', 'Monster'],
-      location: 'San Francisco, CA',
-      salary: '$130k - $200k',
-      duration: '45m',
-      estimatedRemaining: 'Paused',
-      thumbnail: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=400&h=300&fit=crop'
-    }
+      boards: ["Stack Overflow", "Dice", "Monster"],
+      location: "San Francisco, CA",
+      salary: "$130k - $200k",
+      duration: "45m",
+      estimatedRemaining: "Paused",
+      thumbnail:
+        "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=400&h=300&fit=crop",
+    },
   ];
 
   // Transform real sessions to UI format
   const activeSearches = sessions.map((session, index) => ({
     id: session.id,
-    name: session.userMetadata?.searchName || `Search ${index + 1}`,
-    status: session.status === 'RUNNING' ? 'running' : session.status === 'COMPLETED' ? 'paused' : 'paused',
-    progress: session.status === 'RUNNING' ? 50 : session.status === 'COMPLETED' ? 100 : 0,
+    name: session.keywords || session.userMetadata?.keywords || `Search ${index + 1}`,
+    status:
+      session.status === "RUNNING"
+        ? "running"
+        : session.status === "COMPLETED"
+        ? "completed"
+        : session.status === "ERROR"
+        ? "error"
+        : "paused",
+    progress:
+      session.status === "RUNNING"
+        ? 50
+        : session.status === "COMPLETED"
+        ? 100
+        : 0,
     jobsFound: session.userMetadata?.jobsFound || 0,
     applicationsSubmitted: session.userMetadata?.applicationsSubmitted || 0,
-    boards: session.userMetadata?.boards || [],
-    location: session.userMetadata?.location || 'Unknown',
-    salary: session.userMetadata?.salary || 'Not specified',
-    duration: calculateDuration(session.createdAt, session.updatedAt),
-    estimatedRemaining: session.status === 'RUNNING' ? 'In progress' : 'N/A',
-    thumbnail: mockActiveSearches[index % mockActiveSearches.length]?.thumbnail || 'https://images.unsplash.com/photo-1551650975-87deedd944c3?w=400&h=300&fit=crop'
+    boards: [session.jobBoard || session.userMetadata?.jobBoard || "Indeed"],
+    location: session.location || session.userMetadata?.location || "Unknown",
+    salary: session.userMetadata?.salary || "Not specified",
+    duration: calculateDuration(session.createdAt, session.updatedAt || session.createdAt),
+    estimatedRemaining: session.status === "RUNNING" ? "In progress" : "Completed",
+    thumbnail:
+      mockActiveSearches[index % mockActiveSearches.length]?.thumbnail ||
+      "https://images.unsplash.com/photo-1551650975-87deedd944c3?w=400&h=300&fit=crop",
   }));
 
   const calculateDuration = (createdAt: string, updatedAt: string) => {
@@ -123,18 +145,6 @@ export function ActiveSearchesPage() {
     const minutes = Math.floor((duration % (1000 * 60 * 60)) / (1000 * 60));
     return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
   };
-
-  if (selectedSearch !== null) {
-    const search = activeSearches.find(s => s.id === selectedSearch);
-    if (search) {
-      return (
-        <SearchDetailView 
-          search={search} 
-          onBack={() => setSelectedSearch(null)} 
-        />
-      );
-    }
-  }
 
   if (loading) {
     return (
@@ -150,9 +160,8 @@ export function ActiveSearchesPage() {
   if (error) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <p className="text-red-500 mb-4">Error: {error}</p>
-          <Button onClick={fetchSessions}>Try Again</Button>
+        <div className="max-w-md w-full">
+          <ErrorAlert message={error} onRetry={fetchSessions} />
         </div>
       </div>
     );
@@ -167,7 +176,7 @@ export function ActiveSearchesPage() {
             Monitor and manage your running job search sessions.
           </p>
         </div>
-        <Button onClick={() => router.push('/dashboard/job-search')}>
+        <Button onClick={() => router.push("/dashboard/job-search")}>
           <Search className="h-4 w-4 mr-2" />
           New Search
         </Button>
@@ -179,8 +188,10 @@ export function ActiveSearchesPage() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Total Active</p>
-                <p className="text-2xl">{activeSearches.filter(s => s.status === 'running').length}</p>
+                <p className="text-sm text-muted-foreground">Active</p>
+                <p className="text-2xl">
+                  {activeSearches.filter((s) => s.status === "running").length}
+                </p>
               </div>
               <PlayCircle className="h-8 w-8 text-blue-600" />
             </div>
@@ -191,7 +202,9 @@ export function ActiveSearchesPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Jobs Found</p>
-                <p className="text-2xl">{activeSearches.reduce((sum, s) => sum + s.jobsFound, 0)}</p>
+                <p className="text-2xl">
+                  {activeSearches.reduce((sum, s) => sum + s.jobsFound, 0)}
+                </p>
               </div>
               <Briefcase className="h-8 w-8 text-green-600" />
             </div>
@@ -202,7 +215,12 @@ export function ActiveSearchesPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Applications</p>
-                <p className="text-2xl">{activeSearches.reduce((sum, s) => sum + s.applicationsSubmitted, 0)}</p>
+                <p className="text-2xl">
+                  {activeSearches.reduce(
+                    (sum, s) => sum + s.applicationsSubmitted,
+                    0
+                  )}
+                </p>
               </div>
               <TrendingUp className="h-8 w-8 text-purple-600" />
             </div>
@@ -213,7 +231,11 @@ export function ActiveSearchesPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Avg. Time</p>
-                <p className="text-2xl">{activeSearches.length > 0 ? activeSearches[0].duration : '0m'}</p>
+                <p className="text-2xl">
+                  {activeSearches.length > 0
+                    ? activeSearches[0].duration
+                    : "0m"}
+                </p>
               </div>
               <Clock className="h-8 w-8 text-orange-600" />
             </div>
@@ -224,15 +246,26 @@ export function ActiveSearchesPage() {
       {/* Search Grid */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {activeSearches.map((search) => (
-          <Card key={search.id} className="cursor-pointer hover:shadow-lg transition-shadow">
-            <div 
+          <Card
+            key={search.id}
+            className="cursor-pointer hover:shadow-lg transition-shadow"
+          >
+            <div
               className="relative h-32 bg-cover bg-center rounded-t-lg"
               style={{ backgroundImage: `url(${search.thumbnail})` }}
             >
               <div className="absolute inset-0 bg-black/40 rounded-t-lg" />
               <div className="absolute top-3 right-3">
-                <Badge 
-                  variant={search.status === 'running' ? 'default' : 'secondary'}
+                <Badge
+                  variant={
+                    search.status === "running" 
+                      ? "default" 
+                      : search.status === "completed"
+                      ? "secondary"
+                      : search.status === "error"
+                      ? "destructive"
+                      : "outline"
+                  }
                   className="capitalize"
                 >
                   {search.status}
@@ -246,14 +279,14 @@ export function ActiveSearchesPage() {
                 </div>
               </div>
             </div>
-            
+
             <CardContent className="p-4 space-y-4">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Progress</span>
                 <span>{search.progress}%</span>
               </div>
               <Progress value={search.progress} className="h-2" />
-              
+
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <p className="text-muted-foreground">Jobs Found</p>
@@ -282,16 +315,16 @@ export function ActiveSearchesPage() {
               </div>
 
               <div className="flex gap-2">
-                <Button 
-                  size="sm" 
-                  variant="outline" 
+                <Button
+                  size="sm"
+                  variant="outline"
                   className="flex-1"
-                  onClick={() => setSelectedSearch(search.id)}
+                  onClick={() => router.push(`/dashboard/active-searches/${search.id}`)}
                 >
                   <Eye className="h-3 w-3 mr-1" />
                   View
                 </Button>
-                {search.status === 'running' ? (
+                {search.status === "running" ? (
                   <Button size="sm" variant="outline">
                     <Pause className="h-3 w-3" />
                   </Button>
@@ -318,10 +351,6 @@ export function ActiveSearchesPage() {
             <p className="text-muted-foreground mb-4">
               Start your first automated job search to see it here.
             </p>
-            <Button onClick={() => router.push('/dashboard/job-search')}>
-              <Search className="h-4 w-4 mr-2" />
-              Start Your First Search
-            </Button>
           </CardContent>
         </Card>
       )}

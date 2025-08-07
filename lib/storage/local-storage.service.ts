@@ -2,7 +2,8 @@ import {
   SavedJob, 
   SavedSearch, 
   JobApplication, 
-  JobBoard 
+  JobBoard,
+  JobSearchResult 
 } from '../db/dynamodb.service'
 
 const STORAGE_KEYS = {
@@ -15,6 +16,7 @@ const STORAGE_KEYS = {
   USER_INITIALIZED: 'jobseek_user_initialized',
   SEARCHES_INITIALIZED: 'jobseek_searches_initialized',
   USER_PROFILE: 'jobseek_profile',
+  JOB_SEARCH_RESULTS: 'jobseek_job_search_results',
 }
 
 export class LocalStorageService {
@@ -372,6 +374,66 @@ export class LocalStorageService {
     localStorage.setItem(STORAGE_KEYS.SEARCHES_INITIALIZED, 'true')
   }
 
+  // Job Search Results
+  async saveJobSearchResults(results: JobSearchResult): Promise<JobSearchResult> {
+    if (typeof window === 'undefined') {
+      throw new Error('Local storage is not available')
+    }
+
+    const allResults = this.getItems<JobSearchResult>(STORAGE_KEYS.JOB_SEARCH_RESULTS)
+    const existingIndex = allResults.findIndex(
+      r => r.userId === this.userId && r.searchSessionId === results.searchSessionId
+    )
+
+    const resultWithUserId = { 
+      ...results, 
+      userId: this.userId,
+      updatedAt: new Date().toISOString()
+    }
+
+    if (existingIndex >= 0) {
+      allResults[existingIndex] = resultWithUserId
+    } else {
+      allResults.push(resultWithUserId)
+    }
+
+    this.setItems(STORAGE_KEYS.JOB_SEARCH_RESULTS, allResults)
+    return resultWithUserId
+  }
+
+  async getJobSearchResults(userId: string, searchSessionId: string): Promise<JobSearchResult | null> {
+    const results = this.getItems<JobSearchResult>(STORAGE_KEYS.JOB_SEARCH_RESULTS)
+    return results.find(
+      r => r.userId === this.userId && r.searchSessionId === searchSessionId
+    ) || null
+  }
+
+  async updateJobSearchResults(
+    userId: string, 
+    searchSessionId: string, 
+    updates: Partial<JobSearchResult>
+  ): Promise<JobSearchResult> {
+    const currentResults = await this.getJobSearchResults(userId, searchSessionId)
+    if (!currentResults) {
+      throw new Error('Job search results not found')
+    }
+
+    const updatedResults = {
+      ...currentResults,
+      ...updates,
+      userId: this.userId,
+      searchSessionId,
+      updatedAt: new Date().toISOString()
+    }
+
+    return this.saveJobSearchResults(updatedResults)
+  }
+
+  async getAllJobSearchResults(userId: string): Promise<JobSearchResult[]> {
+    const results = this.getItems<JobSearchResult>(STORAGE_KEYS.JOB_SEARCH_RESULTS)
+    return results.filter(r => r.userId === this.userId)
+  }
+
   // User Profile
   async getUserProfile(userId: string): Promise<any | null> {
     if (typeof window === 'undefined') {
@@ -431,6 +493,7 @@ export class LocalStorageService {
       applications: await this.getApplications(this.userId),
       jobBoards: await this.getJobBoards(this.userId),
       savedBoardIds: await this.getUserSavedBoards(this.userId),
+      jobSearchResults: await this.getAllJobSearchResults(this.userId),
       profile,
     }
   }

@@ -3,6 +3,7 @@ import {
   SavedSearch,
   JobApplication,
   JobBoard,
+  JobSearchResult,
   dynamodbService,
   DynamoDBSingleTableService as DynamoDBService
 } from '../db/dynamodb.service'
@@ -96,6 +97,17 @@ class UnifiedStorageService {
         )
       }
 
+      // Migrate job search results
+      if (anonymousData.jobSearchResults) {
+        for (const searchResult of anonymousData.jobSearchResults) {
+          await this.dynamoService.saveJobSearchResults({
+            ...searchResult,
+            userId: authenticatedUserId,
+            updatedAt: new Date().toISOString()
+          })
+        }
+      }
+
       // Migrate profile data if exists
       if (anonymousData.profile) {
         // Import single table service
@@ -121,5 +133,5 @@ class UnifiedStorageService {
 }
 
 export const storageService = new UnifiedStorageService()
-export type { SavedJob, SavedSearch, JobApplication, JobBoard, UserProfile }
+export type { SavedJob, SavedSearch, JobApplication, JobBoard, UserProfile, JobSearchResult }
 export type { StorageService } from './storage.interface'

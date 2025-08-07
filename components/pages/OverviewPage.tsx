@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useRouter } from "next/navigation";
 import {
   Card,
   CardContent,
@@ -23,6 +24,7 @@ import { useProfile } from "@/hooks/use-profile";
 
 export function OverviewPage() {
   const { loading, error, displayName } = useProfile();
+  const router = useRouter();
 
   const stats = [
     {
@@ -208,7 +210,12 @@ export function OverviewPage() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-3">
-            <Button variant="outline" className="justify-start h-auto p-4">
+            <Button 
+              variant="outline" 
+              align="start"
+              className="h-auto p-4"
+              onClick={() => router.push('/dashboard/job-search')}
+            >
               <div className="flex flex-col items-start space-y-2">
                 <Search className="h-5 w-5" />
                 <span>Start New Search</span>
@@ -217,7 +224,7 @@ export function OverviewPage() {
                 </span>
               </div>
             </Button>
-            <Button variant="outline" className="justify-start h-auto p-4">
+            <Button variant="outline" align="start" className="h-auto p-4">
               <div className="flex flex-col items-start space-y-2">
                 <Briefcase className="h-5 w-5" />
                 <span>Review Applications</span>
@@ -226,7 +233,7 @@ export function OverviewPage() {
                 </span>
               </div>
             </Button>
-            <Button variant="outline" className="justify-start h-auto p-4">
+            <Button variant="outline" align="start" className="h-auto p-4">
               <div className="flex flex-col items-start space-y-2">
                 <TrendingUp className="h-5 w-5" />
                 <span>View Analytics</span>
