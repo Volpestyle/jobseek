@@ -1,95 +1,101 @@
-'use client'
+"use client";
 
-import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-import { Label } from '../ui/label';
-import { Textarea } from '../ui/textarea';
-import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
-import { Badge } from '../ui/badge';
-import { Skeleton } from '../ui/skeleton';
-import { toast } from 'sonner';
-import { 
-  Upload, 
-  Plus, 
-  X, 
-  Save, 
-  Edit, 
-  Linkedin, 
-  Github, 
+import React, { useState, useEffect } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "../ui/card";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
+import { Textarea } from "../ui/textarea";
+import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
+import { Badge } from "../ui/badge";
+import { Skeleton } from "../ui/skeleton";
+import { toast } from "sonner";
+import {
+  Upload,
+  Plus,
+  X,
+  Save,
+  Edit,
+  Linkedin,
+  Github,
   Globe,
   Mail,
   Phone,
   MapPin,
-  Loader2
-} from 'lucide-react';
-import { useProfile } from '@/hooks/use-profile';
-import type { WorkExperience, Education } from '@/lib/db/dynamodb.service';
-import { useSession } from 'next-auth/react';
-import Link from 'next/link';
+  Loader2,
+} from "lucide-react";
+import { useProfile } from "@/hooks/use-profile";
+import type { WorkExperience, Education } from "@/lib/db/dynamodb.service";
+import { useSession } from "next-auth/react";
+import Link from "next/link";
 
 export function ProfilePage() {
   const { profile, loading, error, updateProfile, displayName } = useProfile();
   const { data: session, status } = useSession();
-  
+
   // Form state
   const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
-    email: '',
-    phone: '',
-    location: '',
-    bio: '',
-    linkedinUrl: '',
-    githubUrl: '',
-    portfolioUrl: '',
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+    location: "",
+    bio: "",
+    linkedinUrl: "",
+    githubUrl: "",
+    portfolioUrl: "",
     skills: [] as string[],
     experience: [] as WorkExperience[],
-    education: [] as Education[]
+    education: [] as Education[],
   });
-  
-  const [newSkill, setNewSkill] = useState('');
+
+  const [newSkill, setNewSkill] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
   // Initialize form data when profile loads
   useEffect(() => {
     if (profile) {
       setFormData({
-        firstName: profile.firstName || '',
-        lastName: profile.lastName || '',
-        email: profile.email || '',
-        phone: profile.phone || '',
-        location: profile.location || '',
-        bio: profile.bio || '',
-        linkedinUrl: profile.linkedinUrl || '',
-        githubUrl: profile.githubUrl || '',
-        portfolioUrl: profile.portfolioUrl || '',
+        firstName: profile.firstName || "",
+        lastName: profile.lastName || "",
+        email: profile.email || "",
+        phone: profile.phone || "",
+        location: profile.location || "",
+        bio: profile.bio || "",
+        linkedinUrl: profile.linkedinUrl || "",
+        githubUrl: profile.githubUrl || "",
+        portfolioUrl: profile.portfolioUrl || "",
         skills: profile.skills || [],
         experience: profile.experience || [],
-        education: profile.education || []
+        education: profile.education || [],
       });
     }
   }, [profile]);
 
   const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
   const addSkill = () => {
     if (newSkill.trim() && !formData.skills.includes(newSkill.trim())) {
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
-        skills: [...prev.skills, newSkill.trim()]
+        skills: [...prev.skills, newSkill.trim()],
       }));
-      setNewSkill('');
+      setNewSkill("");
     }
   };
 
   const removeSkill = (skillToRemove: string) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      skills: prev.skills.filter(skill => skill !== skillToRemove)
+      skills: prev.skills.filter((skill) => skill !== skillToRemove),
     }));
   };
 
@@ -97,12 +103,15 @@ export function ProfilePage() {
     try {
       setIsSaving(true);
       await updateProfile(formData);
-      toast.success('Profile updated', {
-        description: 'Your profile has been successfully updated.',
+      toast.success("Profile updated", {
+        description: "Your profile has been successfully updated.",
       });
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to update profile. Please try again.';
-      toast.error('Error', {
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to update profile. Please try again.";
+      toast.error("Error", {
         description: errorMessage,
       });
     } finally {
@@ -111,9 +120,9 @@ export function ProfilePage() {
   };
 
   const getInitials = () => {
-    const first = formData.firstName || profile?.firstName || '';
-    const last = formData.lastName || profile?.lastName || '';
-    return `${first[0] || ''}${last[0] || ''}`.toUpperCase() || 'U';
+    const first = formData.firstName || profile?.firstName || "";
+    const last = formData.lastName || profile?.lastName || "";
+    return `${first[0] || ""}${last[0] || ""}`.toUpperCase() || "U";
   };
 
   if (loading) {
@@ -176,7 +185,6 @@ export function ProfilePage() {
         </p>
       </div>
 
-
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Profile Info */}
         <Card className="lg:col-span-1">
@@ -207,59 +215,63 @@ export function ProfilePage() {
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="first-name">First Name</Label>
-                <Input 
-                  id="first-name" 
+                <Input
+                  id="first-name"
                   value={formData.firstName}
-                  onChange={(e) => handleInputChange('firstName', e.target.value)}
+                  onChange={(e) =>
+                    handleInputChange("firstName", e.target.value)
+                  }
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="last-name">Last Name</Label>
-                <Input 
-                  id="last-name" 
+                <Input
+                  id="last-name"
                   value={formData.lastName}
-                  onChange={(e) => handleInputChange('lastName', e.target.value)}
+                  onChange={(e) =>
+                    handleInputChange("lastName", e.target.value)
+                  }
                 />
               </div>
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input 
-                id="email" 
-                type="email" 
+              <Input
+                id="email"
+                type="email"
                 value={formData.email}
-                onChange={(e) => handleInputChange('email', e.target.value)}
+                onChange={(e) => handleInputChange("email", e.target.value)}
               />
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="phone">Phone</Label>
-              <Input 
-                id="phone" 
+              <Input
+                id="phone"
                 value={formData.phone}
-                onChange={(e) => handleInputChange('phone', e.target.value)}
+                onChange={(e) => handleInputChange("phone", e.target.value)}
                 placeholder="+1 (555) 123-4567"
               />
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="location">Location</Label>
-              <Input 
-                id="location" 
+              <Input
+                id="location"
                 value={formData.location}
-                onChange={(e) => handleInputChange('location', e.target.value)}
+                onChange={(e) => handleInputChange("location", e.target.value)}
                 placeholder="San Francisco, CA"
               />
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="bio">Professional Bio</Label>
-              <Textarea 
-                id="bio" 
+              <Textarea
+                id="bio"
                 rows={4}
                 value={formData.bio}
-                onChange={(e) => handleInputChange('bio', e.target.value)}
+                onChange={(e) => handleInputChange("bio", e.target.value)}
                 placeholder="Tell us about your professional background and expertise..."
               />
             </div>
@@ -283,43 +295,49 @@ export function ProfilePage() {
                 <div className="flex items-center px-3 border border-r-0 rounded-l-md bg-muted">
                   <Linkedin className="h-4 w-4" />
                 </div>
-                <Input 
-                  id="linkedin" 
+                <Input
+                  id="linkedin"
                   placeholder="linkedin.com/in/username"
                   value={formData.linkedinUrl}
-                  onChange={(e) => handleInputChange('linkedinUrl', e.target.value)}
+                  onChange={(e) =>
+                    handleInputChange("linkedinUrl", e.target.value)
+                  }
                   className="rounded-l-none"
                 />
               </div>
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="github">GitHub</Label>
               <div className="flex">
                 <div className="flex items-center px-3 border border-r-0 rounded-l-md bg-muted">
                   <Github className="h-4 w-4" />
                 </div>
-                <Input 
-                  id="github" 
+                <Input
+                  id="github"
                   placeholder="github.com/username"
                   value={formData.githubUrl}
-                  onChange={(e) => handleInputChange('githubUrl', e.target.value)}
+                  onChange={(e) =>
+                    handleInputChange("githubUrl", e.target.value)
+                  }
                   className="rounded-l-none"
                 />
               </div>
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="portfolio">Portfolio Website</Label>
               <div className="flex">
                 <div className="flex items-center px-3 border border-r-0 rounded-l-md bg-muted">
                   <Globe className="h-4 w-4" />
                 </div>
-                <Input 
-                  id="portfolio" 
+                <Input
+                  id="portfolio"
                   placeholder="yourwebsite.com"
                   value={formData.portfolioUrl}
-                  onChange={(e) => handleInputChange('portfolioUrl', e.target.value)}
+                  onChange={(e) =>
+                    handleInputChange("portfolioUrl", e.target.value)
+                  }
                   className="rounded-l-none"
                 />
               </div>
@@ -339,7 +357,11 @@ export function ProfilePage() {
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-2">
             {formData.skills.map((skill) => (
-              <Badge key={skill} variant="secondary" className="flex items-center gap-1">
+              <Badge
+                key={skill}
+                variant="secondary"
+                className="flex items-center gap-1"
+              >
                 {skill}
                 <Button
                   variant="ghost"
@@ -357,7 +379,7 @@ export function ProfilePage() {
               placeholder="Add a skill"
               value={newSkill}
               onChange={(e) => setNewSkill(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && addSkill()}
+              onKeyPress={(e) => e.key === "Enter" && addSkill()}
             />
             <Button onClick={addSkill} size="sm">
               <Plus className="h-4 w-4" />

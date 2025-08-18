@@ -210,11 +210,11 @@ export function OverviewPage() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-3">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               align="start"
               className="h-auto p-4"
-              onClick={() => router.push('/dashboard/job-search')}
+              onClick={() => router.push("/dashboard/job-search")}
             >
               <div className="flex flex-col items-start space-y-2">
                 <Search className="h-5 w-5" />

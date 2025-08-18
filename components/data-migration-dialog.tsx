@@ -1,7 +1,7 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import { useAuth } from '@/contexts/auth-context'
+import { useState } from "react";
+import { useAuth } from "@/contexts/auth-context";
 import {
   Dialog,
   DialogContent,
@@ -9,48 +9,51 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Loader2, AlertCircle, CheckCircle } from 'lucide-react'
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Loader2, AlertCircle, CheckCircle } from "lucide-react";
 
 interface DataMigrationDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }
 
-export function DataMigrationDialog({ open, onOpenChange }: DataMigrationDialogProps) {
-  const { migrateAnonymousData } = useAuth()
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState(false)
+export function DataMigrationDialog({
+  open,
+  onOpenChange,
+}: DataMigrationDialogProps) {
+  const { migrateAnonymousData } = useAuth();
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
 
   const handleMigrate = async () => {
-    setIsLoading(true)
-    setError(null)
+    setIsLoading(true);
+    setError(null);
 
     try {
-      await migrateAnonymousData()
-      setSuccess(true)
-      
+      await migrateAnonymousData();
+      setSuccess(true);
+
       // Close dialog after success
       setTimeout(() => {
-        onOpenChange(false)
+        onOpenChange(false);
         // Reload page to refresh data
-        window.location.reload()
-      }, 2000)
+        window.location.reload();
+      }, 2000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to migrate data')
+      setError(err instanceof Error ? err.message : "Failed to migrate data");
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   const handleSkip = () => {
     // Mark that user chose to skip migration
-    localStorage.setItem('jobseek_migration_skipped', 'true')
-    onOpenChange(false)
-  }
+    localStorage.setItem("jobseek_migration_skipped", "true");
+    onOpenChange(false);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -58,7 +61,8 @@ export function DataMigrationDialog({ open, onOpenChange }: DataMigrationDialogP
         <DialogHeader>
           <DialogTitle>Welcome Back!</DialogTitle>
           <DialogDescription>
-            We found data from your anonymous session. Would you like to import it to your account?
+            We found data from your anonymous session. Would you like to import
+            it to your account?
           </DialogDescription>
         </DialogHeader>
 
@@ -106,10 +110,7 @@ export function DataMigrationDialog({ open, onOpenChange }: DataMigrationDialogP
               >
                 Skip & Start Fresh
               </Button>
-              <Button
-                onClick={handleMigrate}
-                disabled={isLoading}
-              >
+              <Button onClick={handleMigrate} disabled={isLoading}>
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Import My Data
               </Button>
@@ -118,5 +119,5 @@ export function DataMigrationDialog({ open, onOpenChange }: DataMigrationDialogP
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  )
+  );
 }

@@ -1,5 +1,5 @@
-import { OverviewPage } from "@/components/pages/OverviewPage"
+import { OverviewPage } from "@/components/pages/OverviewPage";
 
 export default function DashboardOverviewPage() {
-  return <OverviewPage />
+  return <OverviewPage />;
 }

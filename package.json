@@ -57,8 +57,8 @@
     "@radix-ui/react-toggle-group": "^1.1.10",
     "@radix-ui/react-tooltip": "^1.2.7",
     "@types/jsonwebtoken": "^9.0.10",
-    "@wallcrawler/sdk": "link:../wallcrawler/packages/sdk-node",
     "@wallcrawler/components": "link:../wallcrawler/packages/components",
+    "@wallcrawler/sdk": "link:../wallcrawler/packages/sdk-node",
     "@wallcrawler/stagehand": "link:../wallcrawler/packages/stagehand",
     "autoprefixer": "^10.4.21",
     "class-variance-authority": "^0.7.1",
@@ -95,6 +95,7 @@
     "@types/recharts": "^1.8.29",
     "eslint": "^9",
     "eslint-config-next": "15.4.5",
+    "prettier": "^3.6.2",
     "typescript": "^5"
   }
 }

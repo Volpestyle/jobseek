@@ -1,5 +1,5 @@
-import { ActiveSearchesPage } from "@/components/pages/ActiveSearchesPage"
+import { ActiveSearchesPage } from "@/components/pages/ActiveSearchesPage";
 
 export default function DashboardActiveSearchesPage() {
-  return <ActiveSearchesPage />
+  return <ActiveSearchesPage />;
 }

@@ -1,6 +1,6 @@
-import { NextRequest } from "next/server"
-import crypto from "crypto"
-import jwt from "jsonwebtoken"
+import { NextRequest } from "next/server";
+import crypto from "crypto";
+import jwt from "jsonwebtoken";
 
 /**
  * JWT secret for anonymous IDs (should be in env in production)
@@ -8,34 +8,35 @@ import jwt from "jsonwebtoken"
 const ANONYMOUS_JWT_SECRET = process.env.ANONYMOUS_JWT_SECRET!;
 
 /**
+ * Salt for making anonymous IDs unguessable
+ */
+const ANONYMOUS_SALT = process.env.ANONYMOUS_SALT!;
+
+/**
  * Creates a JWT token containing anonymous user fingerprint
  */
 export function createAnonymousToken(request: NextRequest): string {
-  const fingerprint = {
-    userAgent: request.headers.get('user-agent') || '',
-    acceptLanguage: request.headers.get('accept-language') || '',
-    acceptEncoding: request.headers.get('accept-encoding') || '',
-    ip: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || '',
-  };
+  // Simplified fingerprint - just user agent for stability
+  const userAgent = request.headers.get("user-agent") || "";
 
-  // Create a hash of the fingerprint for the ID
+  // Create a salted hash for unguessable but deterministic ID
   const id = crypto
-    .createHash('sha256')
-    .update(JSON.stringify(fingerprint))
-    .digest('hex')
+    .createHash("sha256")
+    .update(userAgent + ANONYMOUS_SALT)
+    .digest("hex")
     .substring(0, 32);
 
   // Create JWT token
   const token = jwt.sign(
     {
       id,
-      fingerprint,
+      userAgent, // Store just user agent for validation
       iat: Math.floor(Date.now() / 1000),
     },
     ANONYMOUS_JWT_SECRET,
     {
-      expiresIn: '7d', // Token valid for 7 days
-      algorithm: 'HS256',
+      expiresIn: "7d", // Token valid for 7 days
+      algorithm: "HS256",
     }
   );
 
@@ -45,21 +46,22 @@ export function createAnonymousToken(request: NextRequest): string {
 /**
  * Verifies and decodes an anonymous JWT token
  */
-export function verifyAnonymousToken(token: string): { id: string; fingerprint: any } | null {
+export function verifyAnonymousToken(
+  token: string
+): { id: string; userAgent: string } | null {
   try {
     const decoded = jwt.verify(token, ANONYMOUS_JWT_SECRET) as any;
     return {
       id: decoded.id,
-      fingerprint: decoded.fingerprint,
+      userAgent: decoded.userAgent || decoded.fingerprint?.userAgent || "", // Support old tokens
     };
   } catch (error) {
     return null;
   }
 }
 
-
 /**
- * Validates that the request matches the token fingerprint (with some flexibility)
+ * Validates that the request matches the token's user agent
  */
 export function validateTokenFingerprint(
   token: string,
@@ -69,23 +71,8 @@ export function validateTokenFingerprint(
   const decoded = verifyAnonymousToken(token);
   if (!decoded) return false;
 
-  const currentFingerprint = {
-    userAgent: request.headers.get('user-agent') || '',
-    acceptLanguage: request.headers.get('accept-language') || '',
-    acceptEncoding: request.headers.get('accept-encoding') || '',
-    ip: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || '',
-  };
+  const currentUserAgent = request.headers.get("user-agent") || "";
 
-  if (strict) {
-    // Strict mode: all fields must match
-    return (
-      decoded.fingerprint.userAgent === currentFingerprint.userAgent &&
-      decoded.fingerprint.acceptLanguage === currentFingerprint.acceptLanguage &&
-      decoded.fingerprint.acceptEncoding === currentFingerprint.acceptEncoding &&
-      decoded.fingerprint.ip === currentFingerprint.ip
-    );
-  } else {
-    // Relaxed mode: just check user agent (allows for IP changes, etc.)
-    return decoded.fingerprint.userAgent === currentFingerprint.userAgent;
-  }
+  // Simple validation - just check user agent matches
+  return decoded.userAgent === currentUserAgent;
 }

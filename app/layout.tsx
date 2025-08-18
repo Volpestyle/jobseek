@@ -1,25 +1,26 @@
-import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
-import './globals.css'
-import { ThemeProvider } from '@/components/theme-provider'
-import { Providers } from '@/components/providers'
-import { Toaster } from 'sonner'
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+import "./globals.css";
+import { ThemeProvider } from "@/components/theme-provider";
+import { Providers } from "@/components/providers";
+import { Toaster } from "sonner";
 
-const inter = Inter({ 
-  subsets: ['latin'],
-  variable: '--font-inter',
-  weight: ['300', '400', '500', '600', '700']
-})
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  weight: ["300", "400", "500", "600", "700"],
+});
 
 export const metadata: Metadata = {
-  title: 'Jobseek - AI-Powered Job Search',
-  description: 'Find your next opportunity with AI-powered job search automation',
-}
+  title: "Jobseek - AI-Powered Job Search",
+  description:
+    "Find your next opportunity with AI-powered job search automation",
+};
 
 export default function RootLayout({
   children,
 }: {
-  children: React.ReactNode
+  children: React.ReactNode;
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
@@ -37,5 +38,5 @@ export default function RootLayout({
         </ThemeProvider>
       </body>
     </html>
-  )
+  );
 }

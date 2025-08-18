@@ -1,5 +1,5 @@
-import { JobManagementPage } from "@/components/pages/JobManagementPage"
+import { JobManagementPage } from "@/components/pages/JobManagementPage";
 
 export default function DashboardJobManagementPage() {
-  return <JobManagementPage />
+  return <JobManagementPage />;
 }

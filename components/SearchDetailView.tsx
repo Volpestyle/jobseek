@@ -1,20 +1,20 @@
-'use client'
+"use client";
 
-import React, { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Button } from './ui/button';
-import { Badge } from './ui/badge';
-import { Progress } from './ui/progress';
-import { Input } from './ui/input';
-import { Textarea } from './ui/textarea';
-import { ScrollArea } from './ui/scroll-area';
-import { 
-  ArrowLeft, 
-  Play, 
-  Pause, 
-  Square, 
-  Send, 
-  Bookmark, 
+import React, { useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { Button } from "./ui/button";
+import { Badge } from "./ui/badge";
+import { Progress } from "./ui/progress";
+import { Input } from "./ui/input";
+import { Textarea } from "./ui/textarea";
+import { ScrollArea } from "./ui/scroll-area";
+import {
+  ArrowLeft,
+  Play,
+  Pause,
+  Square,
+  Send,
+  Bookmark,
   ExternalLink,
   MapPin,
   DollarSign,
@@ -22,8 +22,8 @@ import {
   Building,
   Eye,
   Heart,
-  MessageSquare
-} from 'lucide-react';
+  MessageSquare,
+} from "lucide-react";
 
 interface SearchDetailViewProps {
   search: {
@@ -43,60 +43,78 @@ interface SearchDetailViewProps {
 }
 
 export function SearchDetailView({ search, onBack }: SearchDetailViewProps) {
-  const [message, setMessage] = useState('');
-  
+  const [message, setMessage] = useState("");
+
   const instructions = [
     "Searching LinkedIn for Senior Frontend Developer positions...",
     "Filtering by location: Remote",
     "Applying salary filter: $120k - $180k",
     "Scanning job descriptions for React and TypeScript",
     "Found 12 new matches, evaluating fit...",
-    "Saving high-potential positions to review queue"
+    "Saving high-potential positions to review queue",
   ];
 
   const foundJobs = [
     {
       id: 1,
-      title: 'Senior Frontend Developer',
-      company: 'TechCorp Inc.',
-      location: 'Remote',
-      salary: '$140k - $180k',
-      posted: '2 hours ago',
+      title: "Senior Frontend Developer",
+      company: "TechCorp Inc.",
+      location: "Remote",
+      salary: "$140k - $180k",
+      posted: "2 hours ago",
       matchScore: 95,
       applied: false,
       saved: true,
-      description: 'We are looking for a Senior Frontend Developer with 5+ years of experience in React, TypeScript, and modern web technologies...',
-      requirements: ['React', 'TypeScript', 'Node.js', 'AWS', 'GraphQL'],
-      benefits: ['Remote work', 'Health insurance', 'Stock options', '401k matching']
+      description:
+        "We are looking for a Senior Frontend Developer with 5+ years of experience in React, TypeScript, and modern web technologies...",
+      requirements: ["React", "TypeScript", "Node.js", "AWS", "GraphQL"],
+      benefits: [
+        "Remote work",
+        "Health insurance",
+        "Stock options",
+        "401k matching",
+      ],
     },
     {
       id: 2,
-      title: 'React Developer - Remote',
-      company: 'StartupXYZ',
-      location: 'Worldwide Remote',
-      salary: '$120k - $160k',
-      posted: '4 hours ago',
+      title: "React Developer - Remote",
+      company: "StartupXYZ",
+      location: "Worldwide Remote",
+      salary: "$120k - $160k",
+      posted: "4 hours ago",
       matchScore: 88,
       applied: true,
       saved: true,
-      description: 'Join our fast-growing startup as a React Developer. You will work on cutting-edge products used by millions...',
-      requirements: ['React', 'JavaScript', 'CSS', 'Git', 'Jest'],
-      benefits: ['Flexible hours', 'Unlimited PTO', 'Learning budget', 'Remote setup allowance']
+      description:
+        "Join our fast-growing startup as a React Developer. You will work on cutting-edge products used by millions...",
+      requirements: ["React", "JavaScript", "CSS", "Git", "Jest"],
+      benefits: [
+        "Flexible hours",
+        "Unlimited PTO",
+        "Learning budget",
+        "Remote setup allowance",
+      ],
     },
     {
       id: 3,
-      title: 'Frontend Engineer',
-      company: 'BigTech Solutions',
-      location: 'Remote (US only)',
-      salary: '$150k - $200k',
-      posted: '1 day ago',
+      title: "Frontend Engineer",
+      company: "BigTech Solutions",
+      location: "Remote (US only)",
+      salary: "$150k - $200k",
+      posted: "1 day ago",
       matchScore: 82,
       applied: false,
       saved: false,
-      description: 'We are seeking a talented Frontend Engineer to join our platform team. You will be responsible for building...',
-      requirements: ['React', 'Vue.js', 'TypeScript', 'Docker', 'Kubernetes'],
-      benefits: ['Competitive salary', 'Equity', 'Health benefits', 'Professional development']
-    }
+      description:
+        "We are seeking a talented Frontend Engineer to join our platform team. You will be responsible for building...",
+      requirements: ["React", "Vue.js", "TypeScript", "Docker", "Kubernetes"],
+      benefits: [
+        "Competitive salary",
+        "Equity",
+        "Health benefits",
+        "Professional development",
+      ],
+    },
   ];
 
   return (
@@ -113,13 +131,15 @@ export function SearchDetailView({ search, onBack }: SearchDetailViewProps) {
             <span>•</span>
             <span>ETA: {search.estimatedRemaining}</span>
             <span>•</span>
-            <Badge variant={search.status === 'running' ? 'default' : 'secondary'}>
+            <Badge
+              variant={search.status === "running" ? "default" : "secondary"}
+            >
               {search.status}
             </Badge>
           </div>
         </div>
         <div className="flex gap-2">
-          {search.status === 'running' ? (
+          {search.status === "running" ? (
             <Button variant="outline">
               <Pause className="h-4 w-4 mr-2" />
               Pause
@@ -223,14 +243,17 @@ export function SearchDetailView({ search, onBack }: SearchDetailViewProps) {
               <ScrollArea className="h-32">
                 <div className="space-y-2">
                   {instructions.map((instruction, index) => (
-                    <div key={index} className="text-sm p-2 bg-muted/50 rounded">
+                    <div
+                      key={index}
+                      className="text-sm p-2 bg-muted/50 rounded"
+                    >
                       {instruction}
                     </div>
                   ))}
                 </div>
               </ScrollArea>
               <div className="flex gap-2">
-                <Input 
+                <Input
                   placeholder="Type an instruction..."
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
@@ -256,13 +279,15 @@ export function SearchDetailView({ search, onBack }: SearchDetailViewProps) {
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <h4 className="font-medium">{job.title}</h4>
-                        <p className="text-sm text-muted-foreground">{job.company}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {job.company}
+                        </p>
                       </div>
                       <Badge variant="outline" className="ml-2">
                         {job.matchScore}%
                       </Badge>
                     </div>
-                    
+
                     <div className="space-y-1 text-sm text-muted-foreground">
                       <div className="flex items-center gap-1">
                         <MapPin className="h-3 w-3" />
@@ -280,7 +305,11 @@ export function SearchDetailView({ search, onBack }: SearchDetailViewProps) {
 
                     <div className="flex flex-wrap gap-1">
                       {job.requirements.slice(0, 3).map((req) => (
-                        <Badge key={req} variant="secondary" className="text-xs">
+                        <Badge
+                          key={req}
+                          variant="secondary"
+                          className="text-xs"
+                        >
                           {req}
                         </Badge>
                       ))}
@@ -292,19 +321,21 @@ export function SearchDetailView({ search, onBack }: SearchDetailViewProps) {
                     </div>
 
                     <div className="flex gap-2">
-                      <Button 
-                        size="sm" 
-                        variant={job.applied ? 'secondary' : 'default'}
+                      <Button
+                        size="sm"
+                        variant={job.applied ? "secondary" : "default"}
                         disabled={job.applied}
                         className="flex-1"
                       >
-                        {job.applied ? 'Applied' : 'Apply'}
+                        {job.applied ? "Applied" : "Apply"}
                       </Button>
-                      <Button 
-                        size="sm" 
-                        variant={job.saved ? 'default' : 'outline'}
+                      <Button
+                        size="sm"
+                        variant={job.saved ? "default" : "outline"}
                       >
-                        <Heart className={`h-3 w-3 ${job.saved ? 'fill-current' : ''}`} />
+                        <Heart
+                          className={`h-3 w-3 ${job.saved ? "fill-current" : ""}`}
+                        />
                       </Button>
                       <Button size="sm" variant="outline">
                         <ExternalLink className="h-3 w-3" />

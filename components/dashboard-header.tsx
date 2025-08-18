@@ -1,7 +1,7 @@
-"use client"
+"use client";
 
-import { SidebarTrigger } from "@/components/ui/sidebar"
-import { ModeToggle } from "@/components/mode-toggle"
+import { SidebarTrigger } from "@/components/ui/sidebar";
+import { ModeToggle } from "@/components/mode-toggle";
 
 export function DashboardHeader() {
   return (
@@ -12,5 +12,5 @@ export function DashboardHeader() {
         <ModeToggle />
       </div>
     </header>
-  )
+  );
 }

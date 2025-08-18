@@ -1,5 +1,5 @@
-import { JobSearchPage } from "@/components/pages/JobSearchPage"
+import { JobSearchPage } from "@/components/pages/JobSearchPage";
 
 export default function DashboardJobSearchPage() {
-  return <JobSearchPage />
+  return <JobSearchPage />;
 }

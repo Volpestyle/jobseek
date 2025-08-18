@@ -1,81 +1,99 @@
-'use client'
+"use client";
 
-import React, { useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-import { Label } from '../ui/label';
-import { Textarea } from '../ui/textarea';
-import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
-import { Badge } from '../ui/badge';
-import { 
-  Upload, 
-  Plus, 
-  X, 
-  Save, 
-  Edit, 
-  Linkedin, 
-  Github, 
+import React, { useState } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "../ui/card";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
+import { Textarea } from "../ui/textarea";
+import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
+import { Badge } from "../ui/badge";
+import {
+  Upload,
+  Plus,
+  X,
+  Save,
+  Edit,
+  Linkedin,
+  Github,
   Globe,
   Mail,
   Phone,
-  MapPin
-} from 'lucide-react';
+  MapPin,
+} from "lucide-react";
 
 export function ProfilePage() {
-  const [skills, setSkills] = useState(['React', 'TypeScript', 'Node.js', 'Python', 'AWS', 'Docker']);
-  const [newSkill, setNewSkill] = useState('');
+  const [skills, setSkills] = useState([
+    "React",
+    "TypeScript",
+    "Node.js",
+    "Python",
+    "AWS",
+    "Docker",
+  ]);
+  const [newSkill, setNewSkill] = useState("");
 
   const experience = [
     {
       id: 1,
-      title: 'Senior Frontend Developer',
-      company: 'Tech Solutions Inc.',
-      duration: '2022 - Present',
-      description: 'Led development of React-based web applications serving 100k+ users. Implemented modern frontend architecture and mentored junior developers.'
+      title: "Senior Frontend Developer",
+      company: "Tech Solutions Inc.",
+      duration: "2022 - Present",
+      description:
+        "Led development of React-based web applications serving 100k+ users. Implemented modern frontend architecture and mentored junior developers.",
     },
     {
       id: 2,
-      title: 'Frontend Developer',
-      company: 'StartupCorp',
-      duration: '2020 - 2022',
-      description: 'Built responsive web applications using React and TypeScript. Collaborated with designers and backend developers to deliver high-quality products.'
+      title: "Frontend Developer",
+      company: "StartupCorp",
+      duration: "2020 - 2022",
+      description:
+        "Built responsive web applications using React and TypeScript. Collaborated with designers and backend developers to deliver high-quality products.",
     },
     {
       id: 3,
-      title: 'Junior Developer',
-      company: 'WebDev Agency',
-      duration: '2019 - 2020',
-      description: 'Developed client websites using HTML, CSS, and JavaScript. Gained experience in modern web development practices and version control.'
-    }
+      title: "Junior Developer",
+      company: "WebDev Agency",
+      duration: "2019 - 2020",
+      description:
+        "Developed client websites using HTML, CSS, and JavaScript. Gained experience in modern web development practices and version control.",
+    },
   ];
 
   const education = [
     {
       id: 1,
-      degree: 'Bachelor of Science in Computer Science',
-      school: 'University of Technology',
-      year: '2019',
-      description: 'Focused on software engineering and web development. Graduated magna cum laude.'
+      degree: "Bachelor of Science in Computer Science",
+      school: "University of Technology",
+      year: "2019",
+      description:
+        "Focused on software engineering and web development. Graduated magna cum laude.",
     },
     {
       id: 2,
-      degree: 'Full Stack Web Development Bootcamp',
-      school: 'Code Academy',
-      year: '2018',
-      description: 'Intensive 6-month program covering modern web technologies including React, Node.js, and databases.'
-    }
+      degree: "Full Stack Web Development Bootcamp",
+      school: "Code Academy",
+      year: "2018",
+      description:
+        "Intensive 6-month program covering modern web technologies including React, Node.js, and databases.",
+    },
   ];
 
   const addSkill = () => {
     if (newSkill.trim() && !skills.includes(newSkill.trim())) {
       setSkills([...skills, newSkill.trim()]);
-      setNewSkill('');
+      setNewSkill("");
     }
   };
 
   const removeSkill = (skillToRemove: string) => {
-    setSkills(skills.filter(skill => skill !== skillToRemove));
+    setSkills(skills.filter((skill) => skill !== skillToRemove));
   };
 
   return (
@@ -123,26 +141,30 @@ export function ProfilePage() {
                 <Input id="last-name" defaultValue="Doe" />
               </div>
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" defaultValue="john.doe@example.com" />
+              <Input
+                id="email"
+                type="email"
+                defaultValue="john.doe@example.com"
+              />
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="phone">Phone</Label>
               <Input id="phone" defaultValue="+1 (555) 123-4567" />
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="location">Location</Label>
               <Input id="location" defaultValue="San Francisco, CA" />
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="bio">Professional Bio</Label>
-              <Textarea 
-                id="bio" 
+              <Textarea
+                id="bio"
                 rows={4}
                 defaultValue="Experienced frontend developer with 5+ years building modern web applications. Passionate about user experience and clean code. Expertise in React, TypeScript, and cloud technologies."
               />
@@ -167,38 +189,38 @@ export function ProfilePage() {
                 <div className="flex items-center px-3 border border-r-0 rounded-l-md bg-muted">
                   <Linkedin className="h-4 w-4" />
                 </div>
-                <Input 
-                  id="linkedin" 
+                <Input
+                  id="linkedin"
                   placeholder="linkedin.com/in/username"
                   defaultValue="linkedin.com/in/johndoe"
                   className="rounded-l-none"
                 />
               </div>
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="github">GitHub</Label>
               <div className="flex">
                 <div className="flex items-center px-3 border border-r-0 rounded-l-md bg-muted">
                   <Github className="h-4 w-4" />
                 </div>
-                <Input 
-                  id="github" 
+                <Input
+                  id="github"
                   placeholder="github.com/username"
                   defaultValue="github.com/johndoe"
                   className="rounded-l-none"
                 />
               </div>
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="portfolio">Portfolio Website</Label>
               <div className="flex">
                 <div className="flex items-center px-3 border border-r-0 rounded-l-md bg-muted">
                   <Globe className="h-4 w-4" />
                 </div>
-                <Input 
-                  id="portfolio" 
+                <Input
+                  id="portfolio"
                   placeholder="yourwebsite.com"
                   defaultValue="johndoe.dev"
                   className="rounded-l-none"
@@ -223,19 +245,25 @@ export function ProfilePage() {
               <div className="flex flex-col items-center gap-2">
                 <Upload className="h-6 w-6" />
                 <span>Upload Resume</span>
-                <span className="text-xs text-muted-foreground">PDF, DOC, DOCX</span>
+                <span className="text-xs text-muted-foreground">
+                  PDF, DOC, DOCX
+                </span>
               </div>
             </Button>
             <Button variant="outline" className="h-24 border-dashed">
               <div className="flex flex-col items-center gap-2">
                 <Linkedin className="h-6 w-6" />
                 <span>Import from LinkedIn</span>
-                <span className="text-xs text-muted-foreground">Auto-populate profile</span>
+                <span className="text-xs text-muted-foreground">
+                  Auto-populate profile
+                </span>
               </div>
             </Button>
           </div>
           <div className="text-sm text-muted-foreground">
-            Current resume: <span className="text-foreground">john_doe_resume_2025.pdf</span> (uploaded 2 days ago)
+            Current resume:{" "}
+            <span className="text-foreground">john_doe_resume_2025.pdf</span>{" "}
+            (uploaded 2 days ago)
           </div>
         </CardContent>
       </Card>
@@ -251,7 +279,11 @@ export function ProfilePage() {
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-2">
             {skills.map((skill) => (
-              <Badge key={skill} variant="secondary" className="flex items-center gap-1">
+              <Badge
+                key={skill}
+                variant="secondary"
+                className="flex items-center gap-1"
+              >
                 {skill}
                 <Button
                   variant="ghost"
@@ -269,7 +301,7 @@ export function ProfilePage() {
               placeholder="Add a skill"
               value={newSkill}
               onChange={(e) => setNewSkill(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && addSkill()}
+              onKeyPress={(e) => e.key === "Enter" && addSkill()}
             />
             <Button onClick={addSkill} size="sm">
               <Plus className="h-4 w-4" />
@@ -293,7 +325,9 @@ export function ProfilePage() {
                 <div>
                   <h4>{exp.title}</h4>
                   <p className="text-muted-foreground">{exp.company}</p>
-                  <p className="text-sm text-muted-foreground">{exp.duration}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {exp.duration}
+                  </p>
                 </div>
                 <Button variant="outline" size="sm">
                   <Edit className="h-3 w-3" />
@@ -313,9 +347,7 @@ export function ProfilePage() {
       <Card>
         <CardHeader>
           <CardTitle>Education</CardTitle>
-          <CardDescription>
-            Add your educational background
-          </CardDescription>
+          <CardDescription>Add your educational background</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           {education.map((edu) => (

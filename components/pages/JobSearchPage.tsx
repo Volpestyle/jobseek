@@ -309,8 +309,8 @@ export function JobSearchPage() {
           ? `${searchData.filters.salaryMin}-${searchData.filters.salaryMax}`
           : undefined
         : salaryMin && salaryMax
-        ? `${salaryMin}-${salaryMax}`
-        : undefined;
+          ? `${salaryMin}-${salaryMax}`
+          : undefined;
 
       if (!searchKeywords || searchBoards.length === 0) {
         toast.error("Keywords and at least one job board are required");
@@ -405,8 +405,8 @@ export function JobSearchPage() {
                       hasUnsavedChanges
                         ? "border-yellow-500 hover:border-yellow-600"
                         : !hasUnsavedChanges
-                        ? "border-green-500 hover:border-green-600"
-                        : ""
+                          ? "border-green-500 hover:border-green-600"
+                          : ""
                     }
                   >
                     <Save className="h-4 w-4 mr-2" />
@@ -700,7 +700,6 @@ export function JobSearchPage() {
                 </div>
               </CardContent>
             </Card>
-
           </div>
 
           {/* Job Boards Selection */}

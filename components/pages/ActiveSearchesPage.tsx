@@ -110,28 +110,35 @@ export function ActiveSearchesPage() {
   // Transform real sessions to UI format
   const activeSearches = sessions.map((session, index) => ({
     id: session.id,
-    name: session.keywords || session.userMetadata?.keywords || `Search ${index + 1}`,
+    name:
+      session.keywords ||
+      session.userMetadata?.keywords ||
+      `Search ${index + 1}`,
     status:
       session.status === "RUNNING"
         ? "running"
         : session.status === "COMPLETED"
-        ? "completed"
-        : session.status === "ERROR"
-        ? "error"
-        : "paused",
+          ? "completed"
+          : session.status === "ERROR"
+            ? "error"
+            : "paused",
     progress:
       session.status === "RUNNING"
         ? 50
         : session.status === "COMPLETED"
-        ? 100
-        : 0,
+          ? 100
+          : 0,
     jobsFound: session.userMetadata?.jobsFound || 0,
     applicationsSubmitted: session.userMetadata?.applicationsSubmitted || 0,
     boards: [session.jobBoard || session.userMetadata?.jobBoard || "Indeed"],
     location: session.location || session.userMetadata?.location || "Unknown",
     salary: session.userMetadata?.salary || "Not specified",
-    duration: calculateDuration(session.createdAt, session.updatedAt || session.createdAt),
-    estimatedRemaining: session.status === "RUNNING" ? "In progress" : "Completed",
+    duration: calculateDuration(
+      session.createdAt,
+      session.updatedAt || session.createdAt
+    ),
+    estimatedRemaining:
+      session.status === "RUNNING" ? "In progress" : "Completed",
     thumbnail:
       mockActiveSearches[index % mockActiveSearches.length]?.thumbnail ||
       "https://images.unsplash.com/photo-1551650975-87deedd944c3?w=400&h=300&fit=crop",
@@ -258,13 +265,13 @@ export function ActiveSearchesPage() {
               <div className="absolute top-3 right-3">
                 <Badge
                   variant={
-                    search.status === "running" 
-                      ? "default" 
+                    search.status === "running"
+                      ? "default"
                       : search.status === "completed"
-                      ? "secondary"
-                      : search.status === "error"
-                      ? "destructive"
-                      : "outline"
+                        ? "secondary"
+                        : search.status === "error"
+                          ? "destructive"
+                          : "outline"
                   }
                   className="capitalize"
                 >
@@ -319,7 +326,9 @@ export function ActiveSearchesPage() {
                   size="sm"
                   variant="outline"
                   className="flex-1"
-                  onClick={() => router.push(`/dashboard/active-searches/${search.id}`)}
+                  onClick={() =>
+                    router.push(`/dashboard/active-searches/${search.id}`)
+                  }
                 >
                   <Eye className="h-3 w-3 mr-1" />
                   View

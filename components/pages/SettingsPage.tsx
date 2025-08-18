@@ -1,23 +1,35 @@
-import React from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
-import { Button } from '../ui/button';
-import { Switch } from '../ui/switch';
-import { Label } from '../ui/label';
-import { Input } from '../ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import { Badge } from '../ui/badge';
-import { Separator } from '../ui/separator';
-import { 
-  Save, 
-  Crown, 
-  Bell, 
-  Shield, 
-  Palette, 
+import React from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "../ui/card";
+import { Button } from "../ui/button";
+import { Switch } from "../ui/switch";
+import { Label } from "../ui/label";
+import { Input } from "../ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
+import { Badge } from "../ui/badge";
+import { Separator } from "../ui/separator";
+import {
+  Save,
+  Crown,
+  Bell,
+  Shield,
+  Palette,
   Zap,
   CreditCard,
   Download,
-  Trash2
-} from 'lucide-react';
+  Trash2,
+} from "lucide-react";
 
 interface SettingsPageProps {
   isDarkMode: boolean;
@@ -62,12 +74,10 @@ export function SettingsPage({ isDarkMode, setIsDarkMode }: SettingsPageProps) {
                 <CreditCard className="h-4 w-4 mr-2" />
                 Billing
               </Button>
-              <Button variant="outline">
-                Upgrade
-              </Button>
+              <Button variant="outline">Upgrade</Button>
             </div>
           </div>
-          
+
           <div className="space-y-4">
             <h5>Usage This Month</h5>
             <div className="grid gap-4 md:grid-cols-3">
@@ -83,7 +93,9 @@ export function SettingsPage({ isDarkMode, setIsDarkMode }: SettingsPageProps) {
               </div>
               <div className="text-center p-3 border rounded">
                 <p className="text-2xl">25</p>
-                <p className="text-sm text-muted-foreground">Auto Applications</p>
+                <p className="text-sm text-muted-foreground">
+                  Auto Applications
+                </p>
                 <p className="text-xs text-muted-foreground">∞ Unlimited</p>
               </div>
             </div>
@@ -112,9 +124,9 @@ export function SettingsPage({ isDarkMode, setIsDarkMode }: SettingsPageProps) {
             </div>
             <Switch defaultChecked />
           </div>
-          
+
           <Separator />
-          
+
           <div className="flex items-center justify-between">
             <div className="space-y-1">
               <Label>Smart filtering</Label>
@@ -124,9 +136,9 @@ export function SettingsPage({ isDarkMode, setIsDarkMode }: SettingsPageProps) {
             </div>
             <Switch defaultChecked />
           </div>
-          
+
           <Separator />
-          
+
           <div className="flex items-center justify-between">
             <div className="space-y-1">
               <Label>Auto-save high-match jobs</Label>
@@ -136,9 +148,9 @@ export function SettingsPage({ isDarkMode, setIsDarkMode }: SettingsPageProps) {
             </div>
             <Switch defaultChecked />
           </div>
-          
+
           <Separator />
-          
+
           <div className="space-y-3">
             <Label>Application delay</Label>
             <Select defaultValue="5">
@@ -181,9 +193,9 @@ export function SettingsPage({ isDarkMode, setIsDarkMode }: SettingsPageProps) {
             </div>
             <Switch defaultChecked />
           </div>
-          
+
           <Separator />
-          
+
           <div className="flex items-center justify-between">
             <div className="space-y-1">
               <Label>New job alerts</Label>
@@ -193,9 +205,9 @@ export function SettingsPage({ isDarkMode, setIsDarkMode }: SettingsPageProps) {
             </div>
             <Switch defaultChecked />
           </div>
-          
+
           <Separator />
-          
+
           <div className="flex items-center justify-between">
             <div className="space-y-1">
               <Label>Interview reminders</Label>
@@ -205,9 +217,9 @@ export function SettingsPage({ isDarkMode, setIsDarkMode }: SettingsPageProps) {
             </div>
             <Switch defaultChecked />
           </div>
-          
+
           <Separator />
-          
+
           <div className="flex items-center justify-between">
             <div className="space-y-1">
               <Label>Weekly summary</Label>
@@ -241,9 +253,9 @@ export function SettingsPage({ isDarkMode, setIsDarkMode }: SettingsPageProps) {
             </div>
             <Switch checked={isDarkMode} onCheckedChange={setIsDarkMode} />
           </div>
-          
+
           <Separator />
-          
+
           <div className="space-y-3">
             <Label>Compact view</Label>
             <Switch />
@@ -277,9 +289,9 @@ export function SettingsPage({ isDarkMode, setIsDarkMode }: SettingsPageProps) {
               Enable
             </Button>
           </div>
-          
+
           <Separator />
-          
+
           <div className="flex items-center justify-between">
             <div className="space-y-1">
               <Label>Data export</Label>
@@ -292,9 +304,9 @@ export function SettingsPage({ isDarkMode, setIsDarkMode }: SettingsPageProps) {
               Export
             </Button>
           </div>
-          
+
           <Separator />
-          
+
           <div className="flex items-center justify-between">
             <div className="space-y-1">
               <Label>Delete account</Label>

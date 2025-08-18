@@ -23,10 +23,15 @@ JobSeek uses a simplified dual authentication system:
 
 ### Anonymous Users
 1. Frontend calls `/api/auth/anonymous` 
-2. Server generates JWT with browser fingerprint
+2. Server generates JWT with salted browser fingerprint (unguessable)
 3. JWT stored in httpOnly cookie (7-day expiry)
 4. User data stored in localStorage (persists independently)
 5. `getUserFromRequest()` validates JWT and returns anonymous user info
+
+**Security Note**: Anonymous IDs are generated using a SHA-256 hash of the user-agent + server-side salt (`ANONYMOUS_SALT`). This makes IDs:
+- Deterministic (same browser = same ID for session continuity)
+- Unguessable (requires knowledge of server-side salt)
+- Privacy-friendly (no IP tracking needed)
 
 ## Code Structure
 
@@ -50,13 +55,30 @@ if (user?.isAuthenticated) {
 }
 ```
 
+### API Wrapper Functions
+We provide three wrapper functions for different authentication requirements:
+
+1. **`withAuth`**: Requires authenticated session only
+   - Returns 401 if no NextAuth session exists
+   - Use for sensitive operations requiring a logged-in user
+
+2. **`withAuthOrAnonToken`**: Requires either auth session OR anonymous JWT token
+   - Returns 401 if neither NextAuth session nor anonymous token exists
+   - Use for features available to both authenticated and anonymous users with tokens
+   - Anonymous users must first call `/api/auth/anonymous` to obtain a JWT token
+
+3. **`withPublic`**: No authentication required
+   - Passes through all requests without auth checks
+   - Use for truly public endpoints
+
 ## Security Features
 
 1. **httpOnly Cookies**: Tokens cannot be accessed via JavaScript
 2. **Secure Flag**: HTTPS-only in production
 3. **SameSite Protection**: CSRF protection
-4. **Fingerprint Validation**: Anonymous tokens tied to browser
-5. **No Client Storage**: Tokens never exposed to client
+4. **Salted IDs**: Anonymous IDs use server-side salt (unguessable)
+5. **User-Agent Validation**: Tokens validated against browser user-agent
+6. **No Client Storage**: Tokens never exposed to client
 
 ## Data Storage
 
