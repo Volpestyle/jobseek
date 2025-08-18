@@ -1,0 +1,5 @@
+- Never create mocks, tests, or stub functions unless explicitly asked.
+- Never use any or unknown when working with Typescript
+- Always use pnpm package manager where possible
+- Try to avoid inefficient designs like polling, which wastes api requests and causes unnecessary latency
+- Please stop and ask questions if needed. I prefer you to stop and ask questions over implementing something we may delete.
