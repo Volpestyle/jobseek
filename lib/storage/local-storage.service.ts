@@ -296,8 +296,8 @@ export class LocalStorageService {
     const boards = this.getItems<JobBoard>(STORAGE_KEYS.JOB_BOARDS);
     const index = this.findItemIndex(boards, boardId, "boardId");
 
-    if (index >= 0 && !boards[index].jobs.includes(jobId)) {
-      boards[index].jobs.push(jobId);
+    if (index >= 0 && !boards[index].jobIds.includes(jobId)) {
+      boards[index].jobIds.push(jobId);
       boards[index].updatedAt = new Date().toISOString();
       this.setItems(STORAGE_KEYS.JOB_BOARDS, boards);
     }
@@ -312,7 +312,7 @@ export class LocalStorageService {
     const index = this.findItemIndex(boards, boardId, "boardId");
 
     if (index >= 0) {
-      boards[index].jobs = boards[index].jobs.filter((id) => id !== jobId);
+      boards[index].jobIds = boards[index].jobIds.filter((id: string) => id !== jobId);
       boards[index].updatedAt = new Date().toISOString();
       this.setItems(STORAGE_KEYS.JOB_BOARDS, boards);
     }
@@ -457,7 +457,7 @@ export class LocalStorageService {
     const existingIndex = allResults.findIndex(
       (r) =>
         r.userId === this.userId &&
-        r.searchSessionId === results.searchSessionId
+        r.searchId === results.searchId
     );
 
     const resultWithUserId = {
@@ -478,26 +478,26 @@ export class LocalStorageService {
 
   async getJobSearchResults(
     userId: string,
-    searchSessionId: string
+    searchId: string
   ): Promise<JobSearchResult | null> {
     const results = this.getItems<JobSearchResult>(
       STORAGE_KEYS.JOB_SEARCH_RESULTS
     );
     return (
       results.find(
-        (r) => r.userId === this.userId && r.searchSessionId === searchSessionId
+        (r) => r.userId === this.userId && r.searchId === searchId
       ) || null
     );
   }
 
   async updateJobSearchResults(
     userId: string,
-    searchSessionId: string,
+    searchId: string,
     updates: Partial<JobSearchResult>
   ): Promise<JobSearchResult> {
     const currentResults = await this.getJobSearchResults(
       userId,
-      searchSessionId
+      searchId
     );
     if (!currentResults) {
       throw new Error("Job search results not found");
@@ -507,7 +507,7 @@ export class LocalStorageService {
       ...currentResults,
       ...updates,
       userId: this.userId,
-      searchSessionId,
+      searchId: searchId,
       updatedAt: new Date().toISOString(),
     };
 

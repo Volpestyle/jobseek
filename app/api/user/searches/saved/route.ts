@@ -1,14 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { dynamodbService } from "@/lib/db/dynamodb.service";
-import { withAuthOrAnonToken } from "@/lib/auth/api-wrappers";
+import { withAuth } from "@/lib/auth/api-wrappers";
 
-export const GET = withAuthOrAnonToken(async (request, context, { user }) => {
+export const GET = withAuth(async (request, context, { user }) => {
   try {
-    if (!user.isAuthenticated) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const savedSearches = await dynamodbService.getSavedSearches(user.userId);
+    const savedSearches = await dynamodbService.getSavedSearches(user.id);
 
     return NextResponse.json({ searches: savedSearches });
   } catch (error) {
@@ -20,11 +16,8 @@ export const GET = withAuthOrAnonToken(async (request, context, { user }) => {
   }
 });
 
-export const POST = withAuthOrAnonToken(async (request, context, { user }) => {
+export const POST = withAuth(async (request, context, { user }) => {
   try {
-    if (!user.isAuthenticated) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
 
     const body = await request.json();
     const {
@@ -52,7 +45,7 @@ export const POST = withAuthOrAnonToken(async (request, context, { user }) => {
     }
 
     const savedSearch = await dynamodbService.saveSearch({
-      userId: user.userId,
+      userId: user.id,
       searchId: `search_${Date.now()}`,
       name,
       keywords,

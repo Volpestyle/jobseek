@@ -175,13 +175,11 @@ export class WallcrawlerService {
       if (userId) {
         const jobSearchResult = {
           userId,
-          searchSessionId: sessionId,
+          searchId: sessionId,
+          boardName: params.jobBoard,
+          sessionId,
+          anonymousId: isAnonymous ? (params.userMetadata?.anonymousId as string) : undefined,
           jobs,
-          searchParams: {
-            keywords: params.keywords,
-            location: params.location,
-            jobBoard: params.jobBoard,
-          },
           status: "completed" as const,
           totalJobsFound: result.jobs.length,
           createdAt: new Date().toISOString(),
@@ -191,12 +189,11 @@ export class WallcrawlerService {
             region: "us-east-1",
             startedAt: new Date().toISOString(),
           },
+          ttl: isAnonymous ? Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60) : undefined
         };
 
-        // Save to appropriate storage based on user type
-        if (!isAnonymous) {
-          await dynamodbService.saveJobSearchResults(jobSearchResult);
-        }
+        // Always save to DynamoDB (both authenticated and anonymous users)
+        await dynamodbService.saveJobSearchResults(jobSearchResult);
 
         // Emit job update for real-time streaming
         actionLogEmitter.emitJobUpdate(sessionId, jobs);
@@ -376,13 +373,10 @@ export class WallcrawlerService {
       if (userId && !isAnonymous) {
         const jobSearchResult = {
           userId,
-          searchSessionId: sessionId,
+          searchId: sessionId,
+          boardName: params.jobBoard,
+          sessionId: sessionId,
           jobs,
-          searchParams: {
-            keywords: params.keywords,
-            location: params.location,
-            jobBoard: params.jobBoard,
-          },
           status: "completed" as const,
           totalJobsFound: result.jobs.length,
           createdAt: new Date().toISOString(),
@@ -424,6 +418,232 @@ export class WallcrawlerService {
           console.error("Failed to close Stagehand:", closeError);
         }
       }
+    }
+  }
+
+  async runJobSearchAsync(
+    params: JobSearchParams & { 
+      userMetadata: { 
+        masterSearchId: string; 
+        boardName: string;
+        userId?: string;
+        anonymousId?: string;
+        isAnonymous?: boolean;
+      } 
+    }
+  ): Promise<{ sessionId: string; debugUrl?: string }> {
+    const stagehand = new Stagehand({
+      env: "WALLCRAWLER",
+      apiKey: process.env.WALLCRAWLER_API_KEY,
+      projectId: process.env.WALLCRAWLER_PROJECT_ID,
+      modelName: "anthropic/claude-3-5-sonnet-latest",
+      modelClientOptions: {
+        apiKey: process.env.ANTHROPIC_API_KEY,
+      },
+      verbose: 2,
+      enableCaching: true,
+      domSettleTimeoutMs: 30000,
+      browserbaseSessionCreateParams: {
+        projectId: process.env.WALLCRAWLER_PROJECT_ID || "jobseek-dev",
+        userMetadata: params.userMetadata || {},
+      },
+      useAPI: false,
+      logger: (logLine: LogLine) => {
+        // Emit logs with master search context
+        const mapLogCategory = (
+          category?: string
+        ):
+          | "act"
+          | "extract"
+          | "observe"
+          | "navigate"
+          | "scroll"
+          | "error"
+          | "info"
+          | "debug" => {
+          if (!category) return "info";
+          const lowerCategory = category.toLowerCase();
+          if (lowerCategory.includes("act")) return "act";
+          if (lowerCategory.includes("extract")) return "extract";
+          if (lowerCategory.includes("observe")) return "observe";
+          if (
+            lowerCategory.includes("navigate") ||
+            lowerCategory.includes("goto")
+          )
+            return "navigate";
+          if (lowerCategory.includes("scroll")) return "scroll";
+          if (lowerCategory.includes("error")) return "error";
+          if (lowerCategory.includes("debug")) return "debug";
+          return "info";
+        };
+
+        const actionLog = {
+          id: `${params.userMetadata.masterSearchId}_${params.userMetadata.boardName}_log_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          sessionId: "", // Will be filled when we have sessionId
+          masterSearchId: params.userMetadata.masterSearchId,
+          boardName: params.userMetadata.boardName,
+          timestamp: logLine.timestamp || new Date().toISOString(),
+          action: logLine.message,
+          type: mapLogCategory(logLine.category),
+          details: logLine.auxiliary
+            ? JSON.stringify(logLine.auxiliary)
+            : undefined,
+          status:
+            logLine.level === 0 ? ("error" as const) : ("success" as const),
+        };
+        
+        // Emit for real-time SSE
+        actionLogEmitter.emitLog(params.userMetadata.masterSearchId, actionLog);
+      }
+    });
+    
+    const { sessionId, debugUrl } = await stagehand.init();
+    
+    // Start the search in background
+    this.runSearchInBackground(stagehand, params, sessionId).catch(console.error);
+    
+    // Return immediately with session info
+    return { sessionId, debugUrl };
+  }
+  
+  private async runSearchInBackground(
+    stagehand: Stagehand,
+    params: JobSearchParams & { 
+      userMetadata: { 
+        masterSearchId: string; 
+        boardName: string;
+        userId?: string;
+        anonymousId?: string;
+        isAnonymous?: boolean;
+      } 
+    },
+    sessionId: string
+  ) {
+    try {
+      const page = stagehand.page;
+      const { masterSearchId, boardName, userId, anonymousId, isAnonymous } = params.userMetadata;
+      
+      // Find the job board configuration
+      const jobBoardConfig = DEFAULT_JOB_BOARDS.find(
+        (board) => board.id === params.jobBoard
+      );
+      if (!jobBoardConfig) {
+        throw new Error(`Unsupported job board: ${params.jobBoard}`);
+      }
+      
+      // Navigate and search
+      await page.goto(jobBoardConfig.url);
+      await page.act({
+        action: `Search for "${params.keywords}" jobs in "${params.location}"`
+      });
+      
+      // Extract jobs with intelligent pagination/scrolling
+      let allJobs: any[] = [];
+      let noNewJobsCount = 0;
+      const MAX_NO_NEW_JOBS = 3;  // Stop after 3 attempts with no new jobs
+      const MAX_TOTAL_JOBS = 100; // Reasonable limit
+      
+      while (noNewJobsCount < MAX_NO_NEW_JOBS && allJobs.length < MAX_TOTAL_JOBS) {
+        // Wait for content to settle
+        await page.waitForTimeout(2000);
+        
+        // Extract all currently visible jobs
+        const result = await page.extract({
+          instruction: "Extract all visible job listings on the page",
+          schema: jobListingsSchema
+        });
+        
+        const currentJobCount = result.jobs.length;
+        
+        if (currentJobCount > allJobs.length) {
+          // New jobs found
+          const newJobs = result.jobs.slice(allJobs.length);
+          
+          // Map jobs with IDs
+          const mappedNewJobs = newJobs.map((job, idx) => ({
+            jobId: `${sessionId}_${allJobs.length + idx}_${Date.now()}`,
+            ...job,
+            source: boardName
+          }));
+          
+          allJobs = [...allJobs, ...mappedNewJobs];
+          
+          // Emit real-time update for this board
+          actionLogEmitter.emitJobUpdate(sessionId, mappedNewJobs);
+          actionLogEmitter.emitTotalJobsUpdate(sessionId, allJobs.length);
+          
+          // Save incremental results
+          await dynamodbService.saveJobSearchResults({
+            userId: userId || `ANON#${anonymousId}`,
+            searchId: masterSearchId,
+            boardName,
+            sessionId,
+            anonymousId: isAnonymous ? anonymousId : undefined,
+            jobs: allJobs,
+            status: 'running',
+            totalJobsFound: allJobs.length,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            ttl: isAnonymous ? 
+                 Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60) : undefined
+          });
+          
+          noNewJobsCount = 0;
+        } else {
+          noNewJobsCount++;
+        }
+        
+        // Let Stagehand figure out how to get more results
+        const canLoadMore = await page.observe({
+          instruction: "Can you load more job results? Look for: next button, 'Load More' button, ability to scroll for more results, or pagination controls. Return true if more results can be loaded, false otherwise."
+        });
+        
+        if (canLoadMore && allJobs.length < MAX_TOTAL_JOBS) {
+          await page.act({
+            action: "Load more job results (click next, load more, or scroll down as appropriate)"
+          });
+        } else {
+          break;  // No more results available or reached limit
+        }
+      }
+      
+      // Final update with completed status
+      await dynamodbService.updateJobSearchResults(
+        userId || `ANON#${anonymousId}`,
+        masterSearchId,
+        { 
+          boardName,
+          sessionId,
+          status: 'completed',
+          updatedAt: new Date().toISOString()
+        }
+      );
+      
+      // Update master search board status
+      await dynamodbService.updateBoardSessionStatus(
+        userId || `ANON#${anonymousId}`,
+        masterSearchId,
+        boardName,
+        'completed',
+        allJobs.length
+      );
+      
+    } catch (error) {
+      console.error(`Search failed for ${params.userMetadata.boardName}:`, error);
+      
+      // Update status to error
+      await dynamodbService.updateBoardSessionStatus(
+        params.userMetadata.userId || `ANON#${params.userMetadata.anonymousId}`,
+        params.userMetadata.masterSearchId,
+        params.userMetadata.boardName,
+        'error',
+        0,
+        error instanceof Error ? error.message : 'Unknown error'
+      );
+      
+      throw error;
+    } finally {
+      await stagehand.close();
     }
   }
 }

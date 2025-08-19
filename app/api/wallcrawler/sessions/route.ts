@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createWallcrawlerClient } from "@/lib/wallcrawler-client";
-import { withAuthOrAnonToken } from "@/lib/auth/api-wrappers";
+import { withAuthOrAnonToken, setRefreshedTokenCookie } from "@/lib/auth/api-wrappers";
 
-export const GET = withAuthOrAnonToken(async (request, context, { user }) => {
+export const GET = withAuthOrAnonToken(async (request, context, { user, refreshedToken }) => {
   try {
     // Initialize Wallcrawler SDK
     const wallcrawler = createWallcrawlerClient();
@@ -11,13 +11,13 @@ export const GET = withAuthOrAnonToken(async (request, context, { user }) => {
     const query = JSON.stringify({ userId: user.userId });
 
     // List sessions filtered by user metadata
-    let response;
+    let wallcrawlerResponse;
     try {
-      response = await wallcrawler.sessions.list({
+      wallcrawlerResponse = await wallcrawler.sessions.list({
         q: query,
         status: "RUNNING", // Only get active sessions
       });
-      console.log("Successfully listed sessions:", response);
+      console.log("Successfully listed sessions:", wallcrawlerResponse);
     } catch (error: any) {
       console.error("Failed to list sessions:", {
         status: error.status,
@@ -29,7 +29,7 @@ export const GET = withAuthOrAnonToken(async (request, context, { user }) => {
     }
 
     // The SDK returns SessionListResponse which is Array<Session>
-    const sessions = response || [];
+    const sessions = wallcrawlerResponse || [];
 
     // Format sessions for frontend
     const formattedSessions = sessions.map((session) => ({
@@ -44,12 +44,14 @@ export const GET = withAuthOrAnonToken(async (request, context, { user }) => {
       jobBoard: session.userMetadata?.jobBoard || "",
     }));
 
-    return NextResponse.json({ sessions: formattedSessions });
+    const response = NextResponse.json({ sessions: formattedSessions });
+    return setRefreshedTokenCookie(response, refreshedToken);
   } catch (error) {
     console.error("Failed to fetch sessions:", error);
-    return NextResponse.json(
+    const errorResponse = NextResponse.json(
       { error: "Failed to fetch sessions" },
       { status: 500 }
     );
+    return setRefreshedTokenCookie(errorResponse, refreshedToken);
   }
 });

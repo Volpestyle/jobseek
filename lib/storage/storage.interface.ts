@@ -42,7 +42,6 @@ export type StorageOperations =
   | "hasInitializedSearches"
   | "markSearchesInitialized"
   | "saveJobSearchResults"
-  | "getJobSearchResults"
   | "updateJobSearchResults"
   | "getAllJobSearchResults";
 
@@ -133,13 +132,9 @@ export interface StorageService extends BaseStorageService {
 
   // Job Search Results
   saveJobSearchResults(results: JobSearchResult): Promise<JobSearchResult>;
-  getJobSearchResults(
-    userId: string,
-    searchSessionId: string
-  ): Promise<JobSearchResult | null>;
   updateJobSearchResults(
     userId: string,
-    searchSessionId: string,
+    searchId: string,
     updates: Partial<JobSearchResult>
   ): Promise<JobSearchResult>;
   getAllJobSearchResults(userId: string): Promise<JobSearchResult[]>;
@@ -212,9 +207,8 @@ export interface ClientStorageService extends BaseStorageService {
   saveJobSearchResults(
     results: Omit<JobSearchResult, "userId">
   ): Promise<JobSearchResult>;
-  getJobSearchResults(searchSessionId: string): Promise<JobSearchResult | null>;
   updateJobSearchResults(
-    searchSessionId: string,
+    searchId: string,
     updates: Partial<Omit<JobSearchResult, "userId">>
   ): Promise<JobSearchResult>;
   getAllJobSearchResults(): Promise<JobSearchResult[]>;

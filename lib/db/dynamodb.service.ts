@@ -42,6 +42,7 @@ const DATA_TYPES = {
   RATE_LIMIT: "RATE_LIMIT#",
   JOB_SEARCH_RESULT: "JOB_SEARCH_RESULT#",
   ACTION_LOG: "ACTION_LOG#",
+  MASTER_SEARCH: "MASTER_SEARCH#",
 } as const;
 
 // User Profile Interface
@@ -134,12 +135,6 @@ export interface SavedSearch {
   runFrequency?: string;
   isDefault?: boolean;
   isEditable?: boolean;
-  remoteOk?: boolean; // Backward compatibility
-  salaryMin?: number; // Backward compatibility
-  salaryMax?: number; // Backward compatibility
-  experienceLevel?: string[]; // Backward compatibility
-  jobTypes?: string[]; // Backward compatibility
-  frequency?: "daily" | "weekly" | "realtime"; // Backward compatibility
   nextRunAt?: string;
   notificationChannel?: "email" | "sms" | "push";
   initialized?: boolean;
@@ -205,15 +200,39 @@ export interface ExtractedJob {
   postedDate?: string;
 }
 
-export interface JobSearchResult {
+export interface MasterSearchSession {
   userId: string;
-  searchSessionId: string;
-  jobs: ExtractedJob[];
+  searchId: string;  // Master search ID
+  anonymousId?: string;
   searchParams: {
     keywords: string;
     location: string;
-    jobBoard: string;
+    boards: string[];
   };
+  boardSessions: {
+    [boardName: string]: {
+      sessionId: string;  // Wallcrawler session ID
+      status: 'pending' | 'running' | 'completed' | 'error';
+      jobCount: number;
+      startedAt?: string;
+      completedAt?: string;
+      error?: string;
+    };
+  };
+  totalJobsFound: number;
+  status: 'running' | 'completed' | 'partial' | 'error';
+  createdAt: string;
+  updatedAt: string;
+  ttl?: number;
+}
+
+export interface JobSearchResult {
+  userId: string;
+  searchId: string;        // Master search ID (changed from searchSessionId)
+  boardName: string;        // Which board these results are from
+  sessionId: string;        // Wallcrawler session for this specific board
+  anonymousId?: string;     // For anonymous users
+  jobs: ExtractedJob[];
   status: "pending" | "running" | "completed" | "error";
   totalJobsFound: number;
   createdAt: string;
@@ -224,6 +243,7 @@ export interface JobSearchResult {
     startedAt?: string;
     endedAt?: string;
   };
+  ttl?: number;             // For automatic expiration
 }
 
 export class DynamoDBSingleTableService {
@@ -397,6 +417,22 @@ export class DynamoDBSingleTableService {
     });
     const response = await docClient.send(command);
     return (response.Item as SavedJob) || null;
+  }
+
+  async updateSavedJob(job: SavedJob): Promise<SavedJob> {
+    const timestamps = createTimestamps();
+    const item = {
+      ...job,
+      dataType: `${DATA_TYPES.SAVED_JOB}${job.jobId}`,
+      updatedAt: timestamps.updatedAt,
+    };
+
+    const command = new PutCommand({
+      TableName: USERS_TABLE,
+      Item: item,
+    });
+    await withRetry(() => docClient.send(command));
+    return item;
   }
 
   async deleteSavedJob(userId: string, jobId: string): Promise<void> {
@@ -693,14 +729,14 @@ export class DynamoDBSingleTableService {
     await docClient.send(command);
   }
 
-  // Job Search Results Methods
-  async saveJobSearchResults(
-    results: JobSearchResult
-  ): Promise<JobSearchResult> {
-    const timestamps = createTimestamps(!results.createdAt);
+  // Master Search Session Methods
+  async createMasterSearch(
+    search: MasterSearchSession
+  ): Promise<MasterSearchSession> {
+    const timestamps = createTimestamps(!search.createdAt);
     const item = {
-      ...results,
-      dataType: `${DATA_TYPES.JOB_SEARCH_RESULT}${results.searchSessionId}`,
+      ...search,
+      dataType: `${DATA_TYPES.MASTER_SEARCH}${search.searchId}`,
       ...timestamps,
     };
 
@@ -713,38 +749,216 @@ export class DynamoDBSingleTableService {
     return item;
   }
 
-  async getJobSearchResults(
+  async getMasterSearch(
     userId: string,
-    searchSessionId: string
+    searchId: string
+  ): Promise<MasterSearchSession | null> {
+    const command = new GetCommand({
+      TableName: USERS_TABLE,
+      Key: {
+        userId,
+        dataType: `${DATA_TYPES.MASTER_SEARCH}${searchId}`,
+      },
+    });
+    const response = await docClient.send(command);
+    return (response.Item as MasterSearchSession) || null;
+  }
+
+  async updateBoardSessionStatus(
+    userId: string,
+    searchId: string,
+    boardName: string,
+    status: 'pending' | 'running' | 'completed' | 'error',
+    jobCount?: number,
+    error?: string
+  ): Promise<void> {
+    const updateExpression = `
+      SET boardSessions.#board.#status = :status,
+          boardSessions.#board.jobCount = :jobCount,
+          updatedAt = :updatedAt
+      ${error ? ', boardSessions.#board.#error = :error' : ''}
+    `;
+
+    const command = new UpdateCommand({
+      TableName: USERS_TABLE,
+      Key: {
+        userId,
+        dataType: `${DATA_TYPES.MASTER_SEARCH}${searchId}`,
+      },
+      UpdateExpression: updateExpression,
+      ExpressionAttributeNames: {
+        '#board': boardName,
+        '#status': 'status',
+        ...(error && { '#error': 'error' }),
+      },
+      ExpressionAttributeValues: {
+        ':status': status,
+        ':jobCount': jobCount || 0,
+        ':updatedAt': new Date().toISOString(),
+        ...(error && { ':error': error }),
+      },
+    });
+
+    await withRetry(() => docClient.send(command));
+  }
+
+  async updateMasterSearchStatus(
+    userId: string,
+    searchId: string,
+    status: 'running' | 'completed' | 'partial' | 'error'
+  ): Promise<void> {
+    await atomicUpdate(
+      docClient,
+      USERS_TABLE,
+      {
+        userId,
+        dataType: `${DATA_TYPES.MASTER_SEARCH}${searchId}`,
+      },
+      { status, updatedAt: new Date().toISOString() }
+    );
+  }
+
+  async getMasterSearchesByAnonymousId(
+    anonymousId: string
+  ): Promise<MasterSearchSession[]> {
+    const command = new QueryCommand({
+      TableName: USERS_TABLE,
+      IndexName: "AnonymousSessionIndex",
+      KeyConditionExpression: "anonymousId = :anonymousId",
+      ExpressionAttributeValues: {
+        ":anonymousId": anonymousId,
+      },
+    });
+
+    const response = await docClient.send(command);
+    return (response.Items || []) as MasterSearchSession[];
+  }
+
+  // Job Search Results Methods (Updated)
+  async saveJobSearchResults(
+    results: JobSearchResult
+  ): Promise<JobSearchResult> {
+    const timestamps = createTimestamps(!results.createdAt);
+    const item = {
+      ...results,
+      dataType: `${DATA_TYPES.JOB_SEARCH_RESULT}${results.boardName}#${results.sessionId}`,
+      ...timestamps,
+    };
+
+    const command = new PutCommand({
+      TableName: USERS_TABLE,
+      Item: item,
+    });
+
+    await withRetry(() => docClient.send(command));
+    return item;
+  }
+
+  async getJobSearchResultsByBoard(
+    userId: string,
+    boardName: string,
+    sessionId: string
   ): Promise<JobSearchResult | null> {
     const command = new GetCommand({
       TableName: USERS_TABLE,
       Key: {
         userId,
-        dataType: `${DATA_TYPES.JOB_SEARCH_RESULT}${searchSessionId}`,
+        dataType: `${DATA_TYPES.JOB_SEARCH_RESULT}${boardName}#${sessionId}`,
       },
     });
     const response = await docClient.send(command);
     return (response.Item as JobSearchResult) || null;
   }
 
+  async getSearchResults(searchId: string): Promise<JobSearchResult[]> {
+    const command = new QueryCommand({
+      TableName: USERS_TABLE,
+      IndexName: "SearchIdIndex",
+      KeyConditionExpression: "searchId = :searchId",
+      ExpressionAttributeValues: {
+        ":searchId": searchId,
+      },
+    });
+
+    const response = await docClient.send(command);
+    return (response.Items || []) as JobSearchResult[];
+  }
+
+  async getSearchResultsByAnonymousId(
+    anonymousId: string
+  ): Promise<JobSearchResult[]> {
+    const command = new QueryCommand({
+      TableName: USERS_TABLE,
+      IndexName: "AnonymousSessionIndex",
+      KeyConditionExpression: "anonymousId = :anonymousId",
+      ExpressionAttributeValues: {
+        ":anonymousId": anonymousId,
+      },
+    });
+
+    const response = await docClient.send(command);
+    return (response.Items || []) as JobSearchResult[];
+  }
+
   async updateJobSearchResults(
     userId: string,
-    searchSessionId: string,
+    searchId: string,
     updates: Partial<JobSearchResult>
   ): Promise<JobSearchResult> {
+    // Need to know boardName and sessionId to update specific result
+    // This method needs to be called with more specific info
+    const { boardName, sessionId } = updates;
+    if (!boardName || !sessionId) {
+      throw new Error("boardName and sessionId are required for updating job search results");
+    }
+
     return atomicUpdate<JobSearchResult>(
       docClient,
       USERS_TABLE,
       {
         userId,
-        dataType: `${DATA_TYPES.JOB_SEARCH_RESULT}${searchSessionId}`,
+        dataType: `${DATA_TYPES.JOB_SEARCH_RESULT}${boardName}#${sessionId}`,
       },
       updates,
       {
         conditionExpression: "attribute_exists(userId)",
       }
     );
+  }
+
+  async migrateAnonymousToUser(
+    anonymousId: string,
+    userId: string
+  ): Promise<void> {
+    // Get all search results for anonymous user
+    const searchResults = await this.getSearchResultsByAnonymousId(anonymousId);
+    
+    // Update each result to have the new userId and remove anonymousId
+    const updatePromises = searchResults.map(result => {
+      const newResult = {
+        ...result,
+        userId,
+        anonymousId: undefined,
+        ttl: undefined, // Remove TTL for authenticated users
+      };
+      return this.saveJobSearchResults(newResult);
+    });
+
+    await Promise.all(updatePromises);
+    
+    // Also migrate master searches
+    const masterSearches = await this.getMasterSearchesByAnonymousId(anonymousId);
+    const masterUpdatePromises = masterSearches.map(search => {
+      const newSearch = {
+        ...search,
+        userId,
+        anonymousId: undefined,
+        ttl: undefined,
+      };
+      return this.createMasterSearch(newSearch);
+    });
+
+    await Promise.all(masterUpdatePromises);
   }
 
   async getAllJobSearchResults(userId: string): Promise<JobSearchResult[]> {

@@ -251,21 +251,3 @@ export async function checkApplyRateLimit(
   return checkRateLimit(identifier, config);
 }
 
-// Legacy functions for backward compatibility
-export function checkAnonymousSessionRateLimit(
-  request: NextRequest
-): Promise<RateLimitResult> {
-  return checkSessionRateLimit(request);
-}
-
-export function checkAnonymousSearchRateLimit(
-  request: NextRequest
-): Promise<RateLimitResult> {
-  return checkSearchRateLimit(request);
-}
-
-export function checkAnonymousApplyRateLimit(
-  request: NextRequest
-): Promise<RateLimitResult> {
-  return checkApplyRateLimit(request);
-}

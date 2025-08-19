@@ -40,9 +40,7 @@ export const PUT = withAuth<{ jobId: string }>(
       const updatedJob = await dynamodbService.updateSavedJob({
         ...existingJob,
         tags: tags !== undefined ? tags : existingJob.tags,
-        notes: notes !== undefined ? notes : existingJob.notes,
-        status: status !== undefined ? status : existingJob.status,
-        updatedAt: new Date().toISOString(),
+        notes: notes !== undefined ? notes : existingJob.notes
       });
 
       return NextResponse.json({ job: updatedJob });

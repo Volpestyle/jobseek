@@ -1,79 +1,92 @@
-# JWT Token Lifecycle with HttpOnly Cookies
+# Anonymous Token Lifecycle
 
 ## Overview
 
-This document describes how JWT tokens are stored and managed throughout their lifecycle using httpOnly cookies for maximum security.
+JobSeek uses JWT tokens with httpOnly cookies to track anonymous users. Tokens use random IDs (no fingerprinting) and implement a sliding expiration window to maintain sessions for active users while cleaning up inactive ones.
 
-## Token Lifecycle Stages
+## Token Behavior
 
-### 1. Token Generation
+### Initial Token Creation
+- User visits site without authentication
+- Server generates JWT with random ID via `GET /api/auth/anonymous`
+- Token stored in httpOnly cookie with 1-day expiration
+- Cookie name: `anonymous-token`
 
-- Client makes request to `GET /api/auth/anonymous`
-- Server generates JWT with browser fingerprint
-- Server sets httpOnly cookie with 7-day expiration
-- Cookie is automatically stored by browser
+### Active Session Extension
+- Each session-related API call refreshes the token
+- Same anonymous ID is preserved
+- Expiration extended to 1 day from current request
+- User maintains consistent identity while active
 
-### 2. Token Storage
+### Expired Token Handling
+- After 1 day of inactivity, token expires
+- Next API call returns 401 (unauthorized)
+- Client requests new token from `/api/auth/anonymous`
+- New random ID is generated (fresh start)
+- Old sessions/data associated with expired ID are already cleaned up
+
+## Implementation Details
+
+### Cookie Settings
+```typescript
+{
+  httpOnly: true,        // No JS access (XSS protection)
+  secure: true,          // HTTPS only in production
+  sameSite: 'lax',       // CSRF protection
+  maxAge: 86400,         // 1 day (86400 seconds)
+  path: '/'              // Available site-wide
+}
+```
+
+### Token Structure
+```typescript
+{
+  id: string,    // Random hex string (32 chars)
+  iat: number,   // Issued at timestamp
+  exp: number    // Expiration timestamp
+}
+```
+
+### API Endpoints That Refresh Tokens
+
+Session-related endpoints automatically refresh anonymous tokens:
+- `/api/wallcrawler/sessions/*` - Session management
+- `/api/wallcrawler/search/*` - Job search operations  
+- `/api/jobs/search-results/*` - Search results
+- `/api/wallcrawler/apply` - Job applications
+
+User data endpoints require authentication (no anonymous access):
+- `/api/user/profile` - User profiles
+- `/api/user/searches/saved` - Saved searches
+- `/api/resume/upload` - Resume management
+
+## Security Benefits
+
+✅ **HttpOnly Cookies**: Immune to XSS attacks  
+✅ **Random IDs**: No device fingerprinting or tracking  
+✅ **Short Expiration**: Limits exposure window  
+✅ **Automatic Cleanup**: Inactive sessions expire naturally  
+✅ **HTTPS Only**: Secure transmission in production  
+✅ **CSRF Protection**: SameSite=lax cookie attribute
+
+## Client Usage
 
 ```typescript
-// Server sets cookie (client can't access via JS)
-response.cookies.set('anonymous-token', token, {
-  httpOnly: true,        // ❌ No JS access (XSS protection)
-  secure: true,          // ✅ HTTPS only
-  sameSite: 'lax',       // ✅ CSRF protection
-  maxAge: 604800,        // ✅ 7 days
-  path: '/'              // ✅ Available site-wide
+// Hook automatically manages anonymous tokens
+const { user, isAnonymous } = useAnonymousSession();
+
+// API calls include cookie automatically
+fetch('/api/wallcrawler/sessions', {
+  credentials: 'include'  // Browser sends cookies
 });
 ```
 
-### 3. Token Usage
+## Privacy Considerations
 
-- Browser automatically sends cookie with every request
-- Server reads from `request.cookies.get('anonymous-token')`
-- No need to manually include in request body/headers
-- Works across page refreshes and browser restarts
+- No fingerprinting or device tracking
+- Random IDs provide complete anonymity
+- Sessions expire after 1 day of inactivity
+- No persistent tracking across session boundaries
+- Users get fresh identity after expiration
 
-### 4. Token Validation
-
-- Server verifies JWT signature on each request
-- Validates fingerprint matches (user-agent check)
-- Rejects expired or tampered tokens
-
-### 5. Token Expiration
-
-- Browser automatically deletes cookie after 7 days
-- Server rejects expired tokens
-- Client fetches new token when needed
-
-## Benefits of HttpOnly Cookies
-
-✅ **Maximum Security**: Immune to XSS attacks (no JS access)  
-✅ **Automatic**: Browser handles sending with requests  
-✅ **Persistent**: Survives page refreshes and browser restarts  
-✅ **No Client Storage**: No localStorage/sessionStorage needed  
-✅ **Built-in Expiration**: Browser handles cleanup
-
-## The Complete Flow
-
-### 1. First Visit:
-- Anonymous user visits site
-- `useAnonymousSession` calls `ensureAnonymousToken()`
-- Server generates JWT and sets httpOnly cookie
-- All subsequent requests include cookie automatically
-
-### 2. API Requests:
-- Cookie sent automatically by browser
-- Server validates JWT from cookie
-- No need to pass token in request body
-
-### 3. Return Visit (within 7 days):
-- Cookie still valid
-- No new token needed
-- Seamless experience
-
-### 4. After 7 Days:
-- Cookie expired and deleted by browser
-- New token generated on next request
-- New 7-day cycle begins
-
-This approach provides the best balance of security, convenience, and user experience for anonymous session tracking.
+This approach balances user experience (maintaining sessions during active use) with privacy (no long-term tracking) and security (httpOnly cookies, short expiration).

@@ -1,15 +1,12 @@
 import { NextResponse } from "next/server";
-import { withAuthOrAnonToken } from "@/lib/auth/api-wrappers";
+import { withAuth } from "@/lib/auth/api-wrappers";
 import { storageService } from "@/lib/storage/storage.service";
 import type { UserProfile } from "@/lib/db/dynamodb.service";
 
-export const GET = withAuthOrAnonToken(async (request, context, { user }) => {
+export const GET = withAuth(async (request, context, { user }) => {
   try {
-    if (!user.isAuthenticated) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
 
-    const storage = await storageService.getStorageForUser(user.userId);
+    const storage = await storageService.getStorageForUser(user.id);
     if (!storage || !storage.getUserProfile) {
       return NextResponse.json(
         { error: "Storage not available" },
@@ -17,12 +14,12 @@ export const GET = withAuthOrAnonToken(async (request, context, { user }) => {
       );
     }
 
-    const profile = await storage.getUserProfile(user.userId);
+    const profile = await storage.getUserProfile(user.id);
 
     if (!profile) {
       // Return a default profile if none exists yet
       return NextResponse.json({
-        userId: user.userId,
+        userId: user.id,
         email: user.email || "",
         firstName: "",
         lastName: "",
@@ -42,11 +39,8 @@ export const GET = withAuthOrAnonToken(async (request, context, { user }) => {
   }
 });
 
-export const PUT = withAuthOrAnonToken(async (request, context, { user }) => {
+export const PUT = withAuth(async (request, context, { user }) => {
   try {
-    if (!user.isAuthenticated) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
 
     const updates = await request.json();
 
@@ -70,7 +64,7 @@ export const PUT = withAuthOrAnonToken(async (request, context, { user }) => {
       );
     }
 
-    const storage = await storageService.getStorageForUser(user.userId);
+    const storage = await storageService.getStorageForUser(user.id);
     if (
       !storage ||
       !storage.getUserProfile ||
@@ -84,16 +78,16 @@ export const PUT = withAuthOrAnonToken(async (request, context, { user }) => {
     }
 
     // Check if profile exists
-    const existingProfile = await storage.getUserProfile(user.userId);
+    const existingProfile = await storage.getUserProfile(user.id);
 
     let profile: UserProfile;
     if (existingProfile) {
       // Update existing profile
-      profile = await storage.updateUserProfile(user.userId, updates);
+      profile = await storage.updateUserProfile(user.id, updates);
     } else {
       // Create new profile
       profile = await storage.saveUserProfile({
-        userId: user.userId,
+        userId: user.id,
         email: user.email || updates.email || "",
         firstName: updates.firstName || "",
         lastName: updates.lastName || "",

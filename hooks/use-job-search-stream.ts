@@ -104,7 +104,9 @@ export function useJobSearchStream() {
                     if (isAnonymous && storage && state.sessionId) {
                       const jobResult: JobSearchResult = {
                         userId: userId || "anonymous",
-                        searchSessionId: state.sessionId,
+                        searchId: state.sessionId,
+                        boardName: jobBoard,
+                        sessionId: state.sessionId,
                         jobs: [
                           ...state.jobs,
                           {
@@ -112,7 +114,6 @@ export function useJobSearchStream() {
                             ...newJob,
                           },
                         ] as ExtractedJob[],
-                        searchParams: { keywords, location, jobBoard },
                         status: "running",
                         totalJobsFound: state.totalJobsFound + 1,
                         createdAt: new Date().toISOString(),

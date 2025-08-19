@@ -7,8 +7,8 @@ import { createAnonymousToken } from "@/lib/auth/anonymous";
  */
 export async function GET(request: NextRequest) {
   try {
-    const token = createAnonymousToken(request);
-    const expiresIn = 7 * 24 * 60 * 60; // 7 days in seconds
+    const token = createAnonymousToken();
+    const expiresIn = 86400; // 1 day in seconds
 
     const response = NextResponse.json({
       success: true,
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
       httpOnly: true, // Prevents JS access (XSS protection)
       secure: process.env.NODE_ENV === "production", // HTTPS only in production
       sameSite: "lax", // CSRF protection
-      maxAge: expiresIn, // 7 days
+      maxAge: expiresIn, // 1 day
       path: "/", // Available site-wide
     });
 

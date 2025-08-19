@@ -1,15 +1,9 @@
 import { NextResponse } from "next/server";
-import { withAuthOrAnonToken } from "@/lib/auth/api-wrappers";
+import { withAuth } from "@/lib/auth/api-wrappers";
 import { s3Service } from "@/lib/storage/s3.service";
 
-export const POST = withAuthOrAnonToken(async (request, context, { user }) => {
+export const POST = withAuth(async (request, context, { user }) => {
   try {
-    if (!user.isAuthenticated) {
-      return NextResponse.json(
-        { error: "Authentication required for resume upload" },
-        { status: 401 }
-      );
-    }
 
     const body = await request.json();
     const { filename, contentType } = body;
@@ -37,7 +31,7 @@ export const POST = withAuthOrAnonToken(async (request, context, { user }) => {
 
     // Generate pre-signed upload URL
     const { uploadUrl, s3Key } = await s3Service.getUploadUrl(
-      user.userId,
+      user.id,
       filename,
       contentType
     );
@@ -52,16 +46,10 @@ export const POST = withAuthOrAnonToken(async (request, context, { user }) => {
   }
 });
 
-export const GET = withAuthOrAnonToken(async (request, context, { user }) => {
+export const GET = withAuth(async (request, context, { user }) => {
   try {
-    if (!user.isAuthenticated) {
-      return NextResponse.json(
-        { error: "Authentication required to list resumes" },
-        { status: 401 }
-      );
-    }
 
-    const resumes = await s3Service.listUserResumes(user.userId);
+    const resumes = await s3Service.listUserResumes(user.id);
 
     return NextResponse.json({ resumes });
   } catch (error) {
@@ -73,15 +61,9 @@ export const GET = withAuthOrAnonToken(async (request, context, { user }) => {
   }
 });
 
-export const DELETE = withAuthOrAnonToken(
+export const DELETE = withAuth(
   async (request, context, { user }) => {
     try {
-      if (!user.isAuthenticated) {
-        return NextResponse.json(
-          { error: "Authentication required to delete resumes" },
-          { status: 401 }
-        );
-      }
 
       const { searchParams } = new URL(request.url);
       const s3Key = searchParams.get("s3Key");
@@ -91,7 +73,7 @@ export const DELETE = withAuthOrAnonToken(
       }
 
       // Verify the resume belongs to the user
-      if (!s3Key.includes(`resumes/${user.userId}/`)) {
+      if (!s3Key.includes(`resumes/${user.id}/`)) {
         return NextResponse.json(
           { error: "Unauthorized to delete this resume" },
           { status: 403 }

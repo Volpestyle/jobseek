@@ -14,6 +14,7 @@ import { storageService } from "@/lib/storage/storage.service";
 
 interface AuthContextType {
   isAuthenticated: boolean;
+  isAnonymous: boolean;
   isLoading: boolean;
   userId: string | null;
   storage: ClientStorageService | null;
@@ -87,6 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider
       value={{
         isAuthenticated,
+        isAnonymous: !isAuthenticated && !!storage,
         isLoading,
         userId,
         storage,

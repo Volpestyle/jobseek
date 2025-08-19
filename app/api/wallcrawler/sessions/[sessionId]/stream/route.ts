@@ -67,10 +67,8 @@ export async function GET(
 
         // 2. Send historical jobs from DynamoDB
         if (isAuthenticated) {
-          const jobResults = await dynamodbService.getJobSearchResults(
-            userId,
-            sessionId
-          );
+          const searchResults = await dynamodbService.getSearchResults(sessionId);
+          const jobResults = searchResults.length > 0 ? searchResults[0] : null;
           send("jobs", jobResults?.jobs || []);
           send("totalJobs", jobResults?.totalJobsFound || 0);
         } else {

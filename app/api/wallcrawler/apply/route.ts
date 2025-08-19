@@ -3,38 +3,44 @@ import { dynamodbService } from "@/lib/db/dynamodb.service";
 import { checkApplyRateLimit } from "@/lib/auth/rate-limiter";
 import { Stagehand } from "@wallcrawler/stagehand";
 import { createWallcrawlerClient } from "@/lib/wallcrawler-client";
-import { withAuthOrAnonToken } from "@/lib/auth/api-wrappers";
+import { withAuthOrAnonToken, setRefreshedTokenCookie } from "@/lib/auth/api-wrappers";
 
-export const POST = withAuthOrAnonToken(async (request, context, { user }) => {
+export const POST = withAuthOrAnonToken(async (request, context, { user, refreshedToken }) => {
   try {
     const body = await request.json();
     const { jobUrl, jobDetails, resumeS3Key, coverLetter, sessionId } = body;
 
     if (!jobUrl || !jobDetails) {
-      return NextResponse.json(
-        {
-          error: "Missing required fields: jobUrl and jobDetails are required",
-        },
-        { status: 400 }
+      return setRefreshedTokenCookie(
+        NextResponse.json(
+          {
+            error: "Missing required fields: jobUrl and jobDetails are required",
+          },
+          { status: 400 }
+        ),
+        refreshedToken
       );
     }
 
     // Check rate limit
     const rateLimit = await checkApplyRateLimit(request);
     if (!rateLimit.allowed) {
-      return NextResponse.json(
-        {
-          error: "Rate limit exceeded",
-          retryAfter: Math.ceil((rateLimit.resetTime - Date.now()) / 1000),
-        },
-        {
-          status: 429,
-          headers: {
-            "X-RateLimit-Limit": rateLimit.limit.toString(),
-            "X-RateLimit-Remaining": rateLimit.remaining.toString(),
-            "X-RateLimit-Reset": new Date(rateLimit.resetTime).toISOString(),
+      return setRefreshedTokenCookie(
+        NextResponse.json(
+          {
+            error: "Rate limit exceeded",
+            retryAfter: Math.ceil((rateLimit.resetTime - Date.now()) / 1000),
           },
-        }
+          {
+            status: 429,
+            headers: {
+              "X-RateLimit-Limit": rateLimit.limit.toString(),
+              "X-RateLimit-Remaining": rateLimit.remaining.toString(),
+              "X-RateLimit-Reset": new Date(rateLimit.resetTime).toISOString(),
+            },
+          }
+        ),
+        refreshedToken
       );
     }
 
@@ -58,7 +64,6 @@ export const POST = withAuthOrAnonToken(async (request, context, { user }) => {
             modelClientOptions: {
               apiKey: process.env.ANTHROPIC_API_KEY,
             },
-            sessionId: sessionId, // Use existing session
             useAPI: false,
           });
         } else {
@@ -106,19 +111,20 @@ export const POST = withAuthOrAnonToken(async (request, context, { user }) => {
           jobTitle: jobDetails.title,
           company: jobDetails.company,
           appliedAt: new Date().toISOString(),
-          status: "initiated", // Changed from "applied" to "initiated"
-          resumeUsed: resumeS3Key,
-          coverLetter,
-          jobUrl,
+          status: "applied", // Changed from "applied" to "initiated"
+          notes: resumeS3Key ? `Resume: ${resumeS3Key}\nJob URL: ${jobUrl}` : `Job URL: ${jobUrl}`,
         });
 
-        return NextResponse.json({
-          success: true,
-          applicationId: application.applicationId,
-          sessionId: stagehand.sessionId,
-          message:
-            "Application process initiated. Complete the form in the browser.",
-        });
+        return setRefreshedTokenCookie(
+          NextResponse.json({
+            success: true,
+            applicationId: application.applicationId,
+            sessionId: sessionId,
+            message:
+              "Application process initiated. Complete the form in the browser.",
+          }),
+          refreshedToken
+        );
       } finally {
         // Close Stagehand if we created a new session
         if (stagehand && !sessionId) {
@@ -127,17 +133,23 @@ export const POST = withAuthOrAnonToken(async (request, context, { user }) => {
       }
     } else {
       // Anonymous user flow
-      return NextResponse.json({
-        success: true,
-        message:
-          "Please apply directly on the job board. Sign in to track your applications.",
-      });
+      return setRefreshedTokenCookie(
+        NextResponse.json({
+          success: true,
+          message:
+            "Please apply directly on the job board. Sign in to track your applications.",
+        }),
+        refreshedToken
+      );
     }
   } catch (error) {
     console.error("Failed to apply to job:", error);
-    return NextResponse.json(
-      { error: "Failed to apply to job" },
-      { status: 500 }
+    return setRefreshedTokenCookie(
+      NextResponse.json(
+        { error: "Failed to apply to job" },
+        { status: 500 }
+      ),
+      refreshedToken
     );
   }
 });

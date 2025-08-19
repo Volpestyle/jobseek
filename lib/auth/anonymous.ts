@@ -1,4 +1,3 @@
-import { NextRequest } from "next/server";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 
@@ -8,34 +7,22 @@ import jwt from "jsonwebtoken";
 const ANONYMOUS_JWT_SECRET = process.env.ANONYMOUS_JWT_SECRET!;
 
 /**
- * Salt for making anonymous IDs unguessable
+ * Creates a JWT token with a random anonymous ID
+ * @param existingId Optional existing ID to reuse (for token refresh)
  */
-const ANONYMOUS_SALT = process.env.ANONYMOUS_SALT!;
-
-/**
- * Creates a JWT token containing anonymous user fingerprint
- */
-export function createAnonymousToken(request: NextRequest): string {
-  // Simplified fingerprint - just user agent for stability
-  const userAgent = request.headers.get("user-agent") || "";
-
-  // Create a salted hash for unguessable but deterministic ID
-  const id = crypto
-    .createHash("sha256")
-    .update(userAgent + ANONYMOUS_SALT)
-    .digest("hex")
-    .substring(0, 32);
+export function createAnonymousToken(existingId?: string): string {
+  // Always use random ID, or reuse existing one if provided
+  const id = existingId || crypto.randomBytes(16).toString("hex");
 
   // Create JWT token
   const token = jwt.sign(
     {
       id,
-      userAgent, // Store just user agent for validation
       iat: Math.floor(Date.now() / 1000),
     },
     ANONYMOUS_JWT_SECRET,
     {
-      expiresIn: "7d", // Token valid for 7 days
+      expiresIn: 86400, // Token valid for 1 day (86400 seconds)
       algorithm: "HS256",
     }
   );
@@ -44,35 +31,28 @@ export function createAnonymousToken(request: NextRequest): string {
 }
 
 /**
+ * Re-issues an anonymous token with the same ID but fresh expiration
+ */
+export function reissueAnonymousToken(existingToken: string): string | null {
+  const decoded = verifyAnonymousToken(existingToken);
+  if (!decoded) return null;
+  
+  return createAnonymousToken(decoded.id);
+}
+
+/**
  * Verifies and decodes an anonymous JWT token
  */
-export function verifyAnonymousToken(
-  token: string
-): { id: string; userAgent: string } | null {
+export function verifyAnonymousToken(token: string): {
+  id: string;
+} | null {
   try {
     const decoded = jwt.verify(token, ANONYMOUS_JWT_SECRET) as any;
     return {
       id: decoded.id,
-      userAgent: decoded.userAgent || decoded.fingerprint?.userAgent || "", // Support old tokens
     };
   } catch (error) {
     return null;
   }
 }
 
-/**
- * Validates that the request matches the token's user agent
- */
-export function validateTokenFingerprint(
-  token: string,
-  request: NextRequest,
-  strict: boolean = false
-): boolean {
-  const decoded = verifyAnonymousToken(token);
-  if (!decoded) return false;
-
-  const currentUserAgent = request.headers.get("user-agent") || "";
-
-  // Simple validation - just check user agent matches
-  return decoded.userAgent === currentUserAgent;
-}

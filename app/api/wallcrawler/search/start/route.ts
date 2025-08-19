@@ -1,100 +1,143 @@
 import { NextResponse } from "next/server";
-import { withAuthOrAnonToken } from "@/lib/auth/api-wrappers";
+import { withAuthOrAnonToken, setRefreshedTokenCookie } from "@/lib/auth/api-wrappers";
 import { wallcrawlerService } from "@/lib/wallcrawler.server";
-import { checkSearchRateLimit } from "@/lib/auth/rate-limiter";
 import { dynamodbService } from "@/lib/db/dynamodb.service";
+import type { MasterSearchSession } from "@/lib/db/dynamodb.service";
 
-export const POST = withAuthOrAnonToken(async (request, context, { user }) => {
+export const POST = withAuthOrAnonToken(async (request, context, { user, refreshedToken }) => {
   try {
     const body = await request.json();
     const { keywords, location, boards, saveSearch, searchName } = body;
 
     if (!keywords || !boards || boards.length === 0) {
-      return NextResponse.json(
+      const response = NextResponse.json(
         { error: "Missing required fields: keywords and boards are required" },
         { status: 400 }
       );
+      return setRefreshedTokenCookie(response, refreshedToken);
     }
 
-    // * Check rate limit for all users (authenticated and anonymous)
-    // const rateLimit = await checkSearchRateLimit(request)
-    // if (!rateLimit.allowed) {
-    //   return NextResponse.json(
-    //     {
-    //       error: "Rate limit exceeded",
-    //       retryAfter: Math.ceil((rateLimit.resetTime - Date.now()) / 1000)
-    //     },
-    //     {
-    //       status: 429,
-    //       headers: {
-    //         'X-RateLimit-Limit': rateLimit.limit.toString(),
-    //         'X-RateLimit-Remaining': rateLimit.remaining.toString(),
-    //         'X-RateLimit-Reset': new Date(rateLimit.resetTime).toISOString(),
-    //       }
-    //     }
-    //   )
-    // }
-
-    // Build user metadata for session tracking
-    const userMetadata: Record<string, unknown> = {
-      keywords,
-      location: location || "",
-      jobBoard: boards[0],
-      createdAt: new Date().toISOString(),
+    // Create master search session
+    const masterSearchId = `search_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Extract anonymous ID from userId if it's an anonymous user
+    const anonymousId = user.isAnonymous ? user.userId.replace('anon_', '') : undefined;
+    
+    const masterSearch: MasterSearchSession = {
       userId: user.userId,
-      isAnonymous: user.isAnonymous,
+      searchId: masterSearchId,
+      anonymousId: anonymousId,
+      searchParams: { keywords, location: location || "", boards },
+      boardSessions: {},
+      totalJobsFound: 0,
+      status: 'running',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      ttl: user.isAnonymous ? Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60) : undefined
     };
-
-    if (user.isAuthenticated) {
-      userMetadata.userEmail = user.email;
-
-      // Save the search if requested
-      if (saveSearch && searchName) {
-        await dynamodbService.saveSearch({
-          userId: user.userId,
-          searchId: `search_${Date.now()}`,
-          name: searchName,
-          keywords,
-          location,
-          jobBoards: boards,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          isActive: true,
-        });
-      }
-    } else {
-      // Anonymous users cannot save searches
-      if (saveSearch) {
-        return NextResponse.json(
-          {
-            error:
-              "Anonymous users cannot save searches. Please sign in to save searches.",
-          },
-          { status: 403 }
-        );
-      }
+    
+    // Initialize board sessions
+    for (const board of boards) {
+      masterSearch.boardSessions[board] = {
+        sessionId: '',  // Will be filled when Wallcrawler starts
+        status: 'pending',
+        jobCount: 0
+      };
     }
+    
+    // Save master search
+    await dynamodbService.createMasterSearch(masterSearch);
 
-    // Run the job search on the first board with Stagehand
-    const result = await wallcrawlerService.runJobSearch({
-      keywords,
-      location: location || "",
-      jobBoard: boards[0], // Use the first board for now
-      userMetadata,
+    // Save the search if requested (authenticated users only)
+    if (user.isAuthenticated && saveSearch && searchName) {
+      await dynamodbService.saveSearch({
+        userId: user.userId,
+        searchId: `saved_${Date.now()}`,
+        name: searchName,
+        keywords,
+        location: location || "",
+        jobBoards: boards,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        isActive: true,
+      });
+    } else if (!user.isAuthenticated && saveSearch) {
+      const response = NextResponse.json(
+        {
+          error: "Anonymous users cannot save searches. Please sign in to save searches.",
+        },
+        { status: 403 }
+      );
+      return setRefreshedTokenCookie(response, refreshedToken);
+    }
+    
+    // Start parallel searches for each board
+    const boardPromises = boards.map(async (board: string) => {
+      try {
+        const result = await wallcrawlerService.runJobSearchAsync({
+          keywords,
+          location: location || "",
+          jobBoard: board,
+          userMetadata: {
+            userId: user.userId,
+            anonymousId: anonymousId,
+            isAnonymous: user.isAnonymous,
+            masterSearchId,
+            boardName: board
+          }
+        });
+        
+        // Update master search with Wallcrawler session ID
+        await dynamodbService.updateBoardSessionStatus(
+          user.userId,
+          masterSearchId,
+          board,
+          'running',
+          0
+        );
+        
+        return { board, ...result };
+      } catch (error) {
+        console.error(`Failed to search ${board}:`, error);
+        await dynamodbService.updateBoardSessionStatus(
+          user.userId,
+          masterSearchId,
+          board,
+          'error',
+          0,
+          error instanceof Error ? error.message : 'Unknown error'
+        );
+        return { board, error: error instanceof Error ? error.message : 'Unknown error' };
+      }
     });
-
-    // Return session details and initial results
-    return NextResponse.json({
-      sessionId: result.sessionId,
-      debugUrl: result.debugUrl,
-      jobs: result.jobs,
-      message: `Found ${result.jobs.length} jobs on ${boards[0]}`,
+    
+    // Don't wait for all to complete - return immediately
+    Promise.all(boardPromises).then(async (results) => {
+      // Update master search status when all complete
+      const successCount = results.filter(r => !r.error).length;
+      const status = successCount === 0 ? 'error' : 
+                     successCount === boards.length ? 'completed' : 'partial';
+      
+      await dynamodbService.updateMasterSearchStatus(
+        user.userId,
+        masterSearchId,
+        status
+      );
+    }).catch(console.error);
+    
+    // Return immediately with master search info
+    const response = NextResponse.json({
+      searchId: masterSearchId,
+      message: `Starting search on ${boards.length} job board${boards.length > 1 ? 's' : ''}`,
+      boards: masterSearch.boardSessions
     });
+    return setRefreshedTokenCookie(response, refreshedToken);
   } catch (error) {
     console.error("Failed to start job search:", error);
-    return NextResponse.json(
+    const response = NextResponse.json(
       { error: "Failed to start job search" },
       { status: 500 }
     );
+    return setRefreshedTokenCookie(response, refreshedToken);
   }
 });

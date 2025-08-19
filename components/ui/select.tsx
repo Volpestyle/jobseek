@@ -45,8 +45,6 @@ function SelectValue({
   return <SelectPrimitive.Value data-slot="select-value" {...props} />;
 }
 
-const MotionSelectTrigger = motion(SelectPrimitive.Trigger);
-
 function SelectTrigger({
   className,
   size = "default",
@@ -58,7 +56,7 @@ function SelectTrigger({
   const { open } = React.useContext(SelectContext);
 
   return (
-    <MotionSelectTrigger
+    <SelectPrimitive.Trigger
       data-slot="select-trigger"
       data-size={size}
       className={cn(
@@ -76,7 +74,7 @@ function SelectTrigger({
           <ChevronDownIcon className="size-4 opacity-50" />
         </motion.div>
       </SelectPrimitive.Icon>
-    </MotionSelectTrigger>
+    </SelectPrimitive.Trigger>
   );
 }
 

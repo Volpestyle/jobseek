@@ -1,29 +1,32 @@
-import { withAuthOrAnonToken } from "@/lib/auth/api-wrappers";
+import { NextResponse } from "next/server";
+import { withAuthOrAnonToken, setRefreshedTokenCookie } from "@/lib/auth/api-wrappers";
 import { wallcrawlerService } from "@/lib/wallcrawler.server";
 
-export const POST = withAuthOrAnonToken(async (request, context, { user }) => {
+export const POST = withAuthOrAnonToken(async (request, context, { user, refreshedToken }) => {
   const encoder = new TextEncoder();
 
   try {
     if (!user.isAuthenticated) {
-      return new Response(
+      const response = new NextResponse(
         encoder.encode(
           `data: ${JSON.stringify({ error: "Authentication required" })}\n\n`
         ),
         { status: 401 }
       );
+      return setRefreshedTokenCookie(response, refreshedToken);
     }
 
     const body = await request.json();
     const { keywords, location, jobBoard } = body;
 
     if (!keywords || !location || !jobBoard) {
-      return new Response(
+      const response = new NextResponse(
         encoder.encode(
           `data: ${JSON.stringify({ error: "Missing required fields" })}\n\n`
         ),
         { status: 400 }
       );
+      return setRefreshedTokenCookie(response, refreshedToken);
     }
 
     // Create a TransformStream to handle the SSE
@@ -63,16 +66,18 @@ export const POST = withAuthOrAnonToken(async (request, context, { user }) => {
         await writer.close();
       });
 
-    return new Response(stream.readable, {
+    // Create NextResponse from the stream
+    const response = new NextResponse(stream.readable, {
       headers: {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
       },
     });
+    return setRefreshedTokenCookie(response, refreshedToken);
   } catch (error) {
     console.error("Failed to start job search stream:", error);
-    return new Response(
+    const response = new NextResponse(
       encoder.encode(
         `data: ${JSON.stringify({
           type: "error",
@@ -86,5 +91,6 @@ export const POST = withAuthOrAnonToken(async (request, context, { user }) => {
         },
       }
     );
+    return setRefreshedTokenCookie(response, refreshedToken);
   }
 });

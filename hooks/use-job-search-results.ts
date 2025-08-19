@@ -34,11 +34,13 @@ export function useJobSearchResults() {
 
   // Get results for a specific session
   const getSessionResults = useCallback(
-    async (searchSessionId: string) => {
+    async (searchId: string) => {
       if (!storage) return null;
 
       try {
-        return await storage.getJobSearchResults(searchSessionId);
+        // Since getJobSearchResults was removed, we need to filter from all results
+        const allResults = await storage.getAllJobSearchResults();
+        return allResults.find(r => r.searchId === searchId) || null;
       } catch (err) {
         console.error("Failed to get session results:", err);
         return null;
@@ -56,7 +58,7 @@ export function useJobSearchResults() {
         const saved = await storage.saveJobSearchResults(searchResult);
         // Update local state
         setResults((prev) => [
-          ...prev.filter((r) => r.searchSessionId !== saved.searchSessionId),
+          ...prev.filter((r) => r.searchId !== saved.searchId),
           saved,
         ]);
         return saved;
@@ -71,19 +73,19 @@ export function useJobSearchResults() {
   // Update existing results (e.g., when more jobs are found)
   const updateResults = useCallback(
     async (
-      searchSessionId: string,
+      searchId: string,
       updates: Partial<Omit<JobSearchResult, "userId">>
     ) => {
       if (!storage) return;
 
       try {
         const updated = await storage.updateJobSearchResults(
-          searchSessionId,
+          searchId,
           updates
         );
         // Update local state
         setResults((prev) =>
-          prev.map((r) => (r.searchSessionId === searchSessionId ? updated : r))
+          prev.map((r) => (r.searchId === searchId ? updated : r))
         );
         return updated;
       } catch (err) {
