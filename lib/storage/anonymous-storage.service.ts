@@ -1,4 +1,5 @@
 import type { SavedJob } from "../db/dynamodb.service";
+import { MIGRATION_KEYS } from "../migration/migration.service";
 
 export interface StoredSearch {
   searchId: string;  // Master search ID
@@ -16,9 +17,10 @@ export interface StoredJob extends Omit<SavedJob, 'userId'> {
 }
 
 export class AnonymousStorageService {
-  private readonly SEARCHES_KEY = 'jobseek_searches';
-  private readonly SAVED_JOBS_KEY = 'jobseek_saved_jobs';
-  private readonly ANONYMOUS_ID_KEY = 'jobseek_anonymous_id';
+  // Use unified storage keys from migration service
+  private readonly SEARCHES_KEY = 'jobseek_searches'; // Legacy key for search history
+  private readonly SAVED_JOBS_KEY = MIGRATION_KEYS.SAVED_JOBS;
+  private readonly ANONYMOUS_ID_KEY = MIGRATION_KEYS.ANONYMOUS_ID;
   private readonly MAX_SEARCHES = 20;
   private readonly MAX_SAVED_JOBS = 100;
 

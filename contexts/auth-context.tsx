@@ -63,7 +63,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      await storageService.migrateAnonymousData(session.user.id);
+      // Use the new unified migration service
+      const { migrationService } = await import("@/lib/migration/migration.service");
+      const result = await migrationService.migrate(session.user.id);
+      
+      if (!result.success) {
+        throw new Error(result.errors.join(", "));
+      }
+      
       // Refresh storage with new authenticated client
       const authStorage = createClientStorageService(true, session.user.id);
       setStorage(authStorage);

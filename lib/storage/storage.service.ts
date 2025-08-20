@@ -45,95 +45,24 @@ class UnifiedStorageService {
     return null;
   }
 
-  // Migration helper
+  // Migration helper - now delegates to the unified migration service
   async migrateAnonymousData(authenticatedUserId: string): Promise<void> {
     if (typeof window === "undefined") {
       throw new Error("Migration can only be performed in browser environment");
     }
 
     try {
-      const localService = this.getLocalService();
-
-      // Export all data from local storage
-      const anonymousData = await localService.exportAllData();
-
-      // Migrate saved jobs
-      for (const job of anonymousData.savedJobs) {
-        await this.dynamoService.saveJob({
-          ...job,
-          userId: authenticatedUserId,
-        });
-      }
-
-      // Migrate saved searches
-      for (const search of anonymousData.savedSearches) {
-        await this.dynamoService.saveSearch({
-          ...search,
-          userId: authenticatedUserId,
-          searchId: `search_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        });
-      }
-
-      // Migrate applications
-      for (const application of anonymousData.applications) {
-        await this.dynamoService.saveApplication({
-          ...application,
-          userId: authenticatedUserId,
-          applicationId: `app_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        });
-      }
-
-      // Migrate job boards
-      for (const board of anonymousData.jobBoards) {
-        await this.dynamoService.createJobBoard({
-          ...board,
-          userId: authenticatedUserId,
-          boardId: `board_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        });
-      }
-
-      // Migrate saved board preferences
-      if (
-        anonymousData.savedBoardIds &&
-        anonymousData.savedBoardIds.length > 0
-      ) {
-        await this.dynamoService.initializeUserJobBoards(
-          authenticatedUserId,
-          anonymousData.savedBoardIds
+      // Use the new unified migration service
+      const { migrationService } = await import("../migration/migration.service");
+      const result = await migrationService.migrate(authenticatedUserId);
+      
+      if (!result.success) {
+        throw new Error(
+          result.errors.length > 0
+            ? result.errors.join(", ")
+            : "Migration failed"
         );
       }
-
-      // Migrate job search results
-      if (anonymousData.jobSearchResults) {
-        for (const searchResult of anonymousData.jobSearchResults) {
-          await this.dynamoService.saveJobSearchResults({
-            ...searchResult,
-            userId: authenticatedUserId,
-            updatedAt: new Date().toISOString(),
-          });
-        }
-      }
-
-      // Migrate profile data if exists
-      if (anonymousData.profile) {
-        // Import single table service
-        const { dynamodbService: singleTableService } = await import(
-          "../db/dynamodb.service"
-        );
-        await singleTableService.saveUserProfile({
-          ...anonymousData.profile,
-          userId: authenticatedUserId,
-          createdAt:
-            anonymousData.profile.createdAt || new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        });
-      }
-
-      // Clear local storage after successful migration
-      await localService.clearAllData();
-
-      // Mark migration as complete
-      localStorage.setItem("jobseek_migration_complete", "true");
     } catch (error) {
       console.error("Failed to migrate anonymous data:", error);
       throw error;

@@ -1,32 +1,36 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useAuth } from "@/contexts/auth-context";
+import { useSession } from "next-auth/react";
 import { DataMigrationDialog } from "./data-migration-dialog";
+import { migrationService } from "@/lib/migration/migration.service";
 
 export function MigrationCheck() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { data: session, status } = useSession();
   const [showMigrationDialog, setShowMigrationDialog] = useState(false);
 
   useEffect(() => {
-    if (!isLoading && isAuthenticated) {
-      // Check if there's anonymous data to migrate
-      const hasAnonymousData =
-        localStorage.getItem("jobseek_anonymous_user_id") !== null;
-      const hasMigrated =
-        localStorage.getItem("jobseek_migration_complete") === "true";
-      const hasSkipped =
-        localStorage.getItem("jobseek_migration_skipped") === "true";
+    if (status === "loading") return;
 
-      // Only show dialog if:
-      // 1. There's anonymous data
-      // 2. User hasn't already migrated
-      // 3. User hasn't explicitly skipped migration
-      if (hasAnonymousData && !hasMigrated && !hasSkipped) {
+    // Only check for migration if user is authenticated
+    if (session?.user?.id) {
+      const migrationStatus = migrationService.getMigrationStatus();
+      const hasData = migrationService.hasAnonymousData();
+
+      // Show dialog if:
+      // 1. There's anonymous data to migrate
+      // 2. Migration hasn't been completed or skipped
+      // 3. Not currently in progress
+      if (
+        hasData &&
+        migrationStatus !== "completed" &&
+        migrationStatus !== "skipped" &&
+        migrationStatus !== "in_progress"
+      ) {
         setShowMigrationDialog(true);
       }
     }
-  }, [isAuthenticated, isLoading]);
+  }, [session, status]);
 
   return (
     <DataMigrationDialog

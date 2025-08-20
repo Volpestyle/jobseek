@@ -5,18 +5,20 @@ import {
   JobBoard,
   JobSearchResult,
 } from "../db/dynamodb.service";
+import { MIGRATION_KEYS } from "../migration/migration.service";
 
+// Use unified storage keys from migration service
 const STORAGE_KEYS = {
-  SAVED_JOBS: "jobseek_saved_jobs",
-  SAVED_SEARCHES: "jobseek_saved_searches",
-  APPLICATIONS: "jobseek_applications",
-  JOB_BOARDS: "jobseek_job_boards",
-  USER_ID: "jobseek_anonymous_user_id",
-  USER_SAVED_BOARDS: "jobseek_user_saved_boards",
+  SAVED_JOBS: MIGRATION_KEYS.SAVED_JOBS,
+  SAVED_SEARCHES: MIGRATION_KEYS.SAVED_SEARCHES,
+  APPLICATIONS: MIGRATION_KEYS.APPLICATIONS,
+  JOB_BOARDS: MIGRATION_KEYS.JOB_BOARDS,
+  USER_ID: MIGRATION_KEYS.ANONYMOUS_ID,
+  USER_SAVED_BOARDS: MIGRATION_KEYS.USER_SAVED_BOARDS,
   USER_INITIALIZED: "jobseek_user_initialized",
   SEARCHES_INITIALIZED: "jobseek_searches_initialized",
-  USER_PROFILE: "jobseek_profile",
-  JOB_SEARCH_RESULTS: "jobseek_job_search_results",
+  USER_PROFILE: MIGRATION_KEYS.USER_PROFILE,
+  JOB_SEARCH_RESULTS: MIGRATION_KEYS.SEARCH_RESULTS,
 };
 
 export class LocalStorageService {
