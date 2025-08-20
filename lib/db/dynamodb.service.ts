@@ -834,6 +834,22 @@ export class DynamoDBSingleTableService {
     return (response.Items || []) as MasterSearchSession[];
   }
 
+  async getMasterSearchesByUserId(
+    userId: string
+  ): Promise<MasterSearchSession[]> {
+    const command = new QueryCommand({
+      TableName: USERS_TABLE,
+      KeyConditionExpression: "userId = :userId AND begins_with(dataType, :dataTypePrefix)",
+      ExpressionAttributeValues: {
+        ":userId": userId,
+        ":dataTypePrefix": DATA_TYPES.MASTER_SEARCH,
+      },
+    });
+
+    const response = await docClient.send(command);
+    return (response.Items || []) as MasterSearchSession[];
+  }
+
   // Job Search Results Methods (Updated)
   async saveJobSearchResults(
     results: JobSearchResult

@@ -26,9 +26,13 @@ export function useSavedSearches() {
       const initialized = await storage.hasInitializedSearches();
       setIsInitialized(initialized);
 
-      if (!initialized && savedBoardIds.length > 0) {
-        // Get default searches filtered by user's saved boards
-        const defaultSearches = getDefaultSearchesForUser(savedBoardIds);
+      if (!initialized) {
+        // Get default searches - pass savedBoardIds or use defaults if empty
+        const boardsToUse =
+          savedBoardIds.length > 0
+            ? savedBoardIds
+            : ["linkedin", "indeed", "glassdoor"];
+        const defaultSearches = getDefaultSearchesForUser(boardsToUse);
 
         if (defaultSearches.length > 0) {
           // Initialize with default searches

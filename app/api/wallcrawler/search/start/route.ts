@@ -33,7 +33,7 @@ export const POST = withAuthOrAnonToken(async (request, context, { user, refresh
       status: 'running',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      ttl: user.isAnonymous ? Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60) : undefined
+      ttl: user.isAnonymous ? Math.floor(Date.now() / 1000) + (24 * 60 * 60) : undefined
     };
     
     // Initialize board sessions

@@ -35,16 +35,15 @@ export function ActiveSearchesPage() {
   const [error, setError] = useState<string | null>(null);
 
   const { data: authSession } = useSession();
-  const { listSessions, anonymousId } = useAnonymousSession();
+  const { listSessions, anonymousId, isInitialized } = useAnonymousSession();
   const router = useRouter();
 
   useEffect(() => {
-    // Wait a bit for anonymous token to be set if needed
-    const timer = setTimeout(() => {
+    // Only fetch sessions once initialization is complete
+    if (isInitialized) {
       fetchSessions();
-    }, 100);
-    return () => clearTimeout(timer);
-  }, [authSession, anonymousId]);
+    }
+  }, [isInitialized]);
 
   const fetchSessions = async () => {
     try {

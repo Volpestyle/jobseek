@@ -83,6 +83,7 @@ interface UseAnonymousSessionReturn {
     resumeS3Key?: string;
     coverLetter?: string;
   }) => Promise<ApplyToJobResponse>;
+  isInitialized: boolean;
 }
 
 // Check if we have a valid anonymous token cookie
@@ -109,19 +110,28 @@ export function useAnonymousSession(): UseAnonymousSessionReturn {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasAnonymousToken, setHasAnonymousToken] = useState<boolean>(false);
+  const [isInitialized, setIsInitialized] = useState(false);
 
-  // Ensure anonymous token on mount for anonymous users
+  // Ensure anonymous token on mount and reset on session changes for refetching
   useEffect(() => {
+    setIsInitialized(false);
     if (!session?.user) {
       ensureAnonymousToken().then((success) => {
         setHasAnonymousToken(success);
+        setIsInitialized(true);
       });
     } else {
       setHasAnonymousToken(false);
+      setIsInitialized(true);
     }
   }, [session]);
 
   const listSessions = useCallback(async () => {
+    // Wait for initialization to complete
+    if (!isInitialized) {
+      throw new Error("Session not initialized. Please wait for authentication check to complete.");
+    }
+
     setIsLoading(true);
     setError(null);
 
@@ -142,7 +152,7 @@ export function useAnonymousSession(): UseAnonymousSessionReturn {
     } finally {
       setIsLoading(false);
     }
-  }, [session]);
+  }, [session, isInitialized]);
 
   const searchJobs = useCallback(
     async (params: {
@@ -152,6 +162,11 @@ export function useAnonymousSession(): UseAnonymousSessionReturn {
       saveSearch?: boolean;
       searchName?: string;
     }) => {
+      // Wait for initialization to complete
+      if (!isInitialized) {
+        throw new Error("Session not initialized. Please wait for authentication check to complete.");
+      }
+
       setIsLoading(true);
       setError(null);
 
@@ -183,7 +198,7 @@ export function useAnonymousSession(): UseAnonymousSessionReturn {
         setIsLoading(false);
       }
     },
-    [session]
+    [session, isInitialized]
   );
 
   const applyToJob = useCallback(
@@ -194,6 +209,11 @@ export function useAnonymousSession(): UseAnonymousSessionReturn {
       resumeS3Key?: string;
       coverLetter?: string;
     }) => {
+      // Wait for initialization to complete
+      if (!isInitialized) {
+        throw new Error("Session not initialized. Please wait for authentication check to complete.");
+      }
+
       setIsLoading(true);
       setError(null);
 
@@ -223,7 +243,7 @@ export function useAnonymousSession(): UseAnonymousSessionReturn {
         setIsLoading(false);
       }
     },
-    [session]
+    [session, isInitialized]
   );
 
   const resumeSession = useCallback(async (sessionId: string) => {
@@ -260,5 +280,6 @@ export function useAnonymousSession(): UseAnonymousSessionReturn {
     listSessions,
     searchJobs,
     applyToJob,
+    isInitialized,
   };
 }

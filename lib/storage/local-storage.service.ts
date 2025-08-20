@@ -74,9 +74,8 @@ export class LocalStorageService {
     itemId: string,
     idField: string
   ): number {
-    return items.findIndex(
-      (item) => item.userId === this.userId && item[idField] === itemId
-    );
+    // For anonymous users, just match by ID since data is local to browser
+    return items.findIndex((item) => item[idField] === itemId);
   }
 
   // Saved Jobs
@@ -98,22 +97,19 @@ export class LocalStorageService {
 
   async getSavedJob(userId: string, jobId: string): Promise<SavedJob | null> {
     const jobs = this.getItems<SavedJob>(STORAGE_KEYS.SAVED_JOBS);
-    return (
-      jobs.find((job) => job.userId === this.userId && job.jobId === jobId) ||
-      null
-    );
+    // For anonymous users, just match by jobId since data is local to browser
+    return jobs.find((job) => job.jobId === jobId) || null;
   }
 
   async getSavedJobs(userId: string): Promise<SavedJob[]> {
-    const jobs = this.getItems<SavedJob>(STORAGE_KEYS.SAVED_JOBS);
-    return jobs.filter((job) => job.userId === this.userId);
+    // For anonymous users, return all jobs since data is local to browser
+    return this.getItems<SavedJob>(STORAGE_KEYS.SAVED_JOBS);
   }
 
   async deleteSavedJob(userId: string, jobId: string): Promise<void> {
     const jobs = this.getItems<SavedJob>(STORAGE_KEYS.SAVED_JOBS);
-    const filteredJobs = jobs.filter(
-      (job) => !(job.userId === this.userId && job.jobId === jobId)
-    );
+    // For anonymous users, just filter by jobId since data is local to browser
+    const filteredJobs = jobs.filter((job) => job.jobId !== jobId);
     this.setItems(STORAGE_KEYS.SAVED_JOBS, filteredJobs);
   }
 
@@ -143,17 +139,13 @@ export class LocalStorageService {
     searchId: string
   ): Promise<SavedSearch | null> {
     const searches = this.getItems<SavedSearch>(STORAGE_KEYS.SAVED_SEARCHES);
-    return (
-      searches.find(
-        (search) =>
-          search.userId === this.userId && search.searchId === searchId
-      ) || null
-    );
+    // For anonymous users, just match by searchId since data is local to browser
+    return searches.find((search) => search.searchId === searchId) || null;
   }
 
   async getSavedSearches(userId: string): Promise<SavedSearch[]> {
-    const searches = this.getItems<SavedSearch>(STORAGE_KEYS.SAVED_SEARCHES);
-    return searches.filter((search) => search.userId === this.userId);
+    // For anonymous users, return all searches since data is local to browser
+    return this.getItems<SavedSearch>(STORAGE_KEYS.SAVED_SEARCHES);
   }
 
   async updateSearchLastRun(userId: string, searchId: string): Promise<void> {
@@ -191,9 +183,9 @@ export class LocalStorageService {
 
   async deleteSavedSearch(userId: string, searchId: string): Promise<void> {
     const searches = this.getItems<SavedSearch>(STORAGE_KEYS.SAVED_SEARCHES);
+    // For anonymous users, just filter by searchId since data is local to browser
     const filteredSearches = searches.filter(
-      (search) =>
-        !(search.userId === this.userId && search.searchId === searchId)
+      (search) => search.searchId !== searchId
     );
     this.setItems(STORAGE_KEYS.SAVED_SEARCHES, filteredSearches);
   }
@@ -228,19 +220,13 @@ export class LocalStorageService {
     const applications = this.getItems<JobApplication>(
       STORAGE_KEYS.APPLICATIONS
     );
-    return (
-      applications.find(
-        (app) =>
-          app.userId === this.userId && app.applicationId === applicationId
-      ) || null
-    );
+    // For anonymous users, just match by applicationId since data is local to browser
+    return applications.find((app) => app.applicationId === applicationId) || null;
   }
 
   async getApplications(userId: string): Promise<JobApplication[]> {
-    const applications = this.getItems<JobApplication>(
-      STORAGE_KEYS.APPLICATIONS
-    );
-    return applications.filter((app) => app.userId === this.userId);
+    // For anonymous users, return all applications since data is local to browser
+    return this.getItems<JobApplication>(STORAGE_KEYS.APPLICATIONS);
   }
 
   async updateApplicationStatus(
@@ -278,16 +264,13 @@ export class LocalStorageService {
 
   async getJobBoard(userId: string, boardId: string): Promise<JobBoard | null> {
     const boards = this.getItems<JobBoard>(STORAGE_KEYS.JOB_BOARDS);
-    return (
-      boards.find(
-        (board) => board.userId === this.userId && board.boardId === boardId
-      ) || null
-    );
+    // For anonymous users, just match by boardId since data is local to browser
+    return boards.find((board) => board.boardId === boardId) || null;
   }
 
   async getJobBoards(userId: string): Promise<JobBoard[]> {
-    const boards = this.getItems<JobBoard>(STORAGE_KEYS.JOB_BOARDS);
-    return boards.filter((board) => board.userId === this.userId);
+    // For anonymous users, return all boards since data is local to browser
+    return this.getItems<JobBoard>(STORAGE_KEYS.JOB_BOARDS);
   }
 
   async addJobToBoard(
@@ -322,8 +305,9 @@ export class LocalStorageService {
 
   async deleteJobBoard(userId: string, boardId: string): Promise<void> {
     const boards = this.getItems<JobBoard>(STORAGE_KEYS.JOB_BOARDS);
+    // For anonymous users, just filter by boardId since data is local to browser
     const filteredBoards = boards.filter(
-      (board) => !(board.userId === this.userId && board.boardId === boardId)
+      (board) => board.boardId !== boardId
     );
     this.setItems(STORAGE_KEYS.JOB_BOARDS, filteredBoards);
   }

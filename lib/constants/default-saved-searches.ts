@@ -100,11 +100,26 @@ export const DEFAULT_SAVED_SEARCHES: DefaultSavedSearch[] = [
 export function getDefaultSearchesForUser(
   savedBoardIds: string[]
 ): DefaultSavedSearch[] {
+  // If no saved boards provided, return all default searches as-is
+  if (savedBoardIds.length === 0) {
+    return DEFAULT_SAVED_SEARCHES;
+  }
+  
   // Filter default searches to only include boards the user has saved
-  return DEFAULT_SAVED_SEARCHES.map((search) => ({
-    ...search,
-    jobBoards: search.jobBoards.filter((boardId) =>
+  // But ensure each search has at least one board
+  return DEFAULT_SAVED_SEARCHES.map((search) => {
+    const filteredBoards = search.jobBoards.filter((boardId) =>
       savedBoardIds.includes(boardId)
-    ),
-  })).filter((search) => search.jobBoards.length > 0);
+    );
+    
+    // If no boards match, use the first saved board as a fallback
+    const boardsToUse = filteredBoards.length > 0 
+      ? filteredBoards 
+      : [savedBoardIds[0]].filter(Boolean);
+    
+    return {
+      ...search,
+      jobBoards: boardsToUse,
+    };
+  }).filter((search) => search.jobBoards.length > 0);
 }
