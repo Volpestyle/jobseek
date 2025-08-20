@@ -28,8 +28,8 @@ export const GET = withAuthOrAnonToken(async (request, context, { user, refreshe
       throw error;
     }
 
-    // The SDK returns SessionListResponse which is Array<Session>
-    const sessions = wallcrawlerResponse || [];
+    // The backend returns { success: true, data: Array<Session> }
+    const sessions = wallcrawlerResponse?.data || [];
 
     // Format sessions for frontend
     const formattedSessions = sessions.map((session) => ({

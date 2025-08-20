@@ -126,31 +126,14 @@ export function useAnonymousSession(): UseAnonymousSessionReturn {
     setError(null);
 
     try {
-      if (session?.user) {
-        // Authenticated user - use GET
-        const response = await fetch("/api/wallcrawler/sessions");
+      const response = await fetch("/api/wallcrawler/sessions");
 
-        if (!response.ok) {
-          throw new Error("Failed to list sessions");
-        }
-
-        const data: ListSessionsResponse = await response.json();
-        return data.sessions;
-      } else {
-        // Anonymous user - use POST with anonymousId
-        const response = await fetch("/api/wallcrawler/sessions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}), // Token is in cookie
-        });
-
-        if (!response.ok) {
-          throw new Error("Failed to list sessions");
-        }
-
-        const data: ListSessionsResponse = await response.json();
-        return data.sessions;
+      if (!response.ok) {
+        throw new Error("Failed to list sessions");
       }
+
+      const data: ListSessionsResponse = await response.json();
+      return data.sessions;
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to list sessions";
