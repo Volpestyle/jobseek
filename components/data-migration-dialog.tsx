@@ -1,5 +1,3 @@
-"use client";
-
 import { useState, useEffect } from "react";
 import {
   Dialog,
@@ -31,7 +29,7 @@ import {
   MigrationProgress,
   MigrationResult,
 } from "@/lib/migration/migration.service";
-import { useSession } from "next-auth/react";
+import { useAuth } from "@/contexts/auth-context";
 
 interface DataMigrationDialogProps {
   open: boolean;
@@ -50,13 +48,12 @@ export function DataMigrationDialog({
   open,
   onOpenChange,
 }: DataMigrationDialogProps) {
-  const { data: session } = useSession();
+  const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [progress, setProgress] = useState<MigrationProgress | null>(null);
   const [migrationResult, setMigrationResult] = useState<MigrationResult | null>(null);
-  const [showDetails, setShowDetails] = useState(false);
   
   // Migration options state
   const [migrationOptions, setMigrationOptions] = useState<MigrationOption[]>([]);
@@ -133,7 +130,7 @@ export function DataMigrationDialog({
   };
 
   const handleMigrate = async () => {
-    if (!session?.user?.id) {
+    if (!user?.id) {
       setError("You must be logged in to migrate data");
       return;
     }
@@ -144,7 +141,7 @@ export function DataMigrationDialog({
 
     try {
       const result = await migrationService.migrate(
-        session.user.id,
+        user.id,
         (progress) => {
           setProgress(progress);
         }

@@ -1,8 +1,8 @@
-"use client";
-
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/auth-context";
 import { JobSearchResult, ExtractedJob } from "@/lib/db/dynamodb.service";
+import { fetchWithAnonymousRetry } from "@/lib/auth/anonymous-client";
 
 export interface StreamedJobResult {
   title: string;
@@ -26,6 +26,14 @@ export interface SearchStreamState {
 
 export function useJobSearchStream() {
   const { storage, userId, isAnonymous } = useAuth();
+  const queryClient = useQueryClient();
+  const resultsQueryKey = useMemo<(string | undefined)[]>(
+    () => [
+      "jobSearchResults",
+      isAnonymous ? "anonymous" : userId ?? "authenticated",
+    ],
+    [isAnonymous, userId]
+  );
   const [state, setState] = useState<SearchStreamState>({
     isSearching: false,
     sessionId: null,
@@ -51,14 +59,24 @@ export function useJobSearchStream() {
         abortControllerRef.current = new AbortController();
 
         // Start SSE connection
-        const response = await fetch("/api/wallcrawler/search/stream", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
+        const response = await fetchWithAnonymousRetry(
+          "/api/wallcrawler/search/stream",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ keywords, location, jobBoard }),
+            signal: abortControllerRef.current.signal,
           },
-          body: JSON.stringify({ keywords, location, jobBoard }),
-          signal: abortControllerRef.current.signal,
-        });
+          { skipRefresh: !isAnonymous }
+        );
+
+        if (response.status === 401) {
+          throw new Error(
+            "Authentication required. Please refresh the page or sign in."
+          );
+        }
 
         if (!response.ok) {
           throw new Error("Failed to start search");
@@ -92,7 +110,7 @@ export function useJobSearchStream() {
                     }));
                     break;
 
-                  case "job_found":
+                  case "job_found": {
                     const newJob = event.job;
                     setState((prev) => ({
                       ...prev,
@@ -120,7 +138,6 @@ export function useJobSearchStream() {
                         updatedAt: new Date().toISOString(),
                       };
 
-                      // Save or update in localStorage
                       if (state.jobs.length === 0) {
                         await storage.saveJobSearchResults(jobResult);
                       } else {
@@ -130,8 +147,20 @@ export function useJobSearchStream() {
                           updatedAt: jobResult.updatedAt,
                         });
                       }
+
+                      queryClient.setQueryData<JobSearchResult[] | undefined>(
+                        resultsQueryKey,
+                        (prev) => {
+                          const existing = prev ?? [];
+                          const withoutCurrent = existing.filter(
+                            (r) => r.searchId !== jobResult.searchId
+                          );
+                          return [...withoutCurrent, jobResult];
+                        }
+                      );
                     }
                     break;
+                  }
 
                   case "status_update":
                     setState((prev) => ({
@@ -150,10 +179,23 @@ export function useJobSearchStream() {
 
                     // For anonymous users, mark as completed in localStorage
                     if (isAnonymous && storage && event.sessionId) {
+                      const updatedAt = new Date().toISOString();
                       await storage.updateJobSearchResults(event.sessionId, {
                         status: "completed",
-                        updatedAt: new Date().toISOString(),
+                        updatedAt,
                       });
+
+                      queryClient.setQueryData<JobSearchResult[] | undefined>(
+                        resultsQueryKey,
+                        (prev) => {
+                          const existing = prev ?? [];
+                          return existing.map((result) =>
+                            result.searchId === event.sessionId
+                              ? { ...result, status: "completed", updatedAt }
+                              : result
+                          );
+                        }
+                      );
                     }
                     break;
 
@@ -182,7 +224,16 @@ export function useJobSearchStream() {
         }));
       }
     },
-    [storage, userId, isAnonymous, state.sessionId, state.jobs]
+    [
+      storage,
+      userId,
+      isAnonymous,
+      state.sessionId,
+      state.jobs,
+      state.totalJobsFound,
+      queryClient,
+      resultsQueryKey,
+    ]
   );
 
   const cancelSearch = useCallback(() => {

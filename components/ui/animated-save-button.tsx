@@ -1,5 +1,3 @@
-"use client";
-
 import React from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Star } from "lucide-react";
@@ -30,6 +28,7 @@ export function AnimatedSaveButton({
   variant,
 }: AnimatedSaveButtonProps) {
   const [hasInteracted, setHasInteracted] = React.useState(false);
+  const unsavedVariant = variant ?? "outline";
 
   const handleClick = () => {
     setHasInteracted(true);
@@ -38,7 +37,7 @@ export function AnimatedSaveButton({
 
   return (
     <Button
-      variant={isSaved ? "default" : "outline"}
+      variant={isSaved ? "default" : unsavedVariant}
       size={size}
       onClick={handleClick}
       disabled={disabled}

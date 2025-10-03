@@ -1,9 +1,6 @@
-"use client";
-
 import * as React from "react";
 import { motion } from "motion/react";
 import {
-  Sidebar,
   useSidebar,
   SidebarContent,
   SidebarFooter,
@@ -42,6 +39,9 @@ export function MotionSidebar({
 }: MotionSidebarProps) {
   // Extract props that shouldn't be passed to motion.div
   const { onDrag, onDragEnd, onDragStart, ...safeProps } = props;
+  void onDrag;
+  void onDragEnd;
+  void onDragStart;
   const { isMobile, state, openMobile, setOpenMobile } = useSidebar();
   const isCollapsed = state === "collapsed";
 

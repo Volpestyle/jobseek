@@ -1,7 +1,10 @@
-import { useState, useCallback, useEffect } from "react";
-import { useSession } from "next-auth/react";
+import { useCallback, useMemo } from "react";
+import {
+  useMutation,
+  useQuery,
+} from "@tanstack/react-query";
+import { useAuth } from "@/contexts/auth-context";
 
-// API Response Types
 interface SessionDetails {
   id: string;
   status: string;
@@ -86,73 +89,176 @@ interface UseAnonymousSessionReturn {
   isInitialized: boolean;
 }
 
-// Check if we have a valid anonymous token cookie
 async function ensureAnonymousToken(): Promise<boolean> {
-  try {
-    // The cookie is httpOnly, so we can't read it directly
-    // We'll make a request to get/refresh the token
-    const response = await fetch("/api/auth/anonymous");
-    if (!response.ok) {
-      console.error("Failed to get anonymous token");
-      return false;
-    }
+  const response = await fetch("/api/auth/anonymous");
 
-    const data = await response.json();
-    return data.success === true;
-  } catch (error) {
-    console.error("Error getting anonymous token:", error);
-    return false;
+  if (!response.ok) {
+    const message = await safeErrorMessage(response);
+    throw new Error(message || "Failed to get anonymous token");
   }
+
+  const data = await response.json();
+  return data.success === true;
+}
+
+async function safeErrorMessage(response: Response): Promise<string | null> {
+  try {
+    const data = await response.json();
+    if (data && typeof data === "object" && "error" in data) {
+      return typeof data.error === "string" ? data.error : null;
+    }
+  } catch (error) {
+    console.error("Failed to parse error response:", error);
+  }
+  return null;
 }
 
 export function useAnonymousSession(): UseAnonymousSessionReturn {
-  const { data: session } = useSession();
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [hasAnonymousToken, setHasAnonymousToken] = useState<boolean>(false);
-  const [isInitialized, setIsInitialized] = useState(false);
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
 
-  // Ensure anonymous token on mount and reset on session changes for refetching
-  useEffect(() => {
-    setIsInitialized(false);
-    if (!session?.user) {
-      ensureAnonymousToken().then((success) => {
-        setHasAnonymousToken(success);
-        setIsInitialized(true);
-      });
-    } else {
-      setHasAnonymousToken(false);
-      setIsInitialized(true);
+  const tokenQueryKey = useMemo(
+    () => ["anonymousToken", isAuthenticated ? user?.id ?? "authenticated" : "anonymous"],
+    [isAuthenticated, user?.id]
+  );
+
+  const {
+    data: hasAnonymousToken,
+    isLoading: tokenLoading,
+    isFetching: tokenFetching,
+    isError: tokenIsError,
+    error: tokenError,
+    isFetched: tokenFetched,
+    refetch: refetchAnonymousToken,
+  } = useQuery({
+    queryKey: tokenQueryKey,
+    queryFn: ensureAnonymousToken,
+    enabled: !authLoading && !isAuthenticated,
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+    refetchOnWindowFocus: false,
+  });
+
+  const ensureReady = useCallback(async () => {
+    if (authLoading) {
+      throw new Error("Authentication state not ready");
     }
-  }, [session]);
 
-  const listSessions = useCallback(async () => {
-    // Wait for initialization to complete
-    if (!isInitialized) {
-      throw new Error("Session not initialized. Please wait for authentication check to complete.");
+    if (isAuthenticated) {
+      return;
     }
 
-    setIsLoading(true);
-    setError(null);
+    if (hasAnonymousToken) {
+      return;
+    }
 
-    try {
+    const result = await refetchAnonymousToken();
+    if (!result.data) {
+      throw new Error("Anonymous session initialization failed");
+    }
+  }, [authLoading, isAuthenticated, hasAnonymousToken, refetchAnonymousToken]);
+
+  const sessionsQueryKey = useMemo(
+    () => ["anonymousSessions", isAuthenticated ? user?.id ?? "authenticated" : "anonymous"],
+    [isAuthenticated, user?.id]
+  );
+
+  const {
+    refetch: refetchSessions,
+    data: cachedSessions,
+    isFetching: sessionsFetching,
+    error: sessionsError,
+  } = useQuery<SessionDetails[]>({
+    queryKey: sessionsQueryKey,
+    enabled: false,
+    queryFn: async () => {
+      await ensureReady();
       const response = await fetch("/api/wallcrawler/sessions");
 
       if (!response.ok) {
-        throw new Error("Failed to list sessions");
+        const message = await safeErrorMessage(response);
+        throw new Error(message || "Failed to list sessions");
       }
 
       const data: ListSessionsResponse = await response.json();
-      return data.sessions;
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Failed to list sessions";
-      setError(message);
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
-  }, [session, isInitialized]);
+      return data.sessions ?? [];
+    },
+  });
+
+  const searchJobsMutation = useMutation({
+    mutationFn: async (params: {
+      keywords: string;
+      location: string;
+      jobBoard: string;
+      saveSearch?: boolean;
+      searchName?: string;
+    }) => {
+      await ensureReady();
+
+      const response = await fetch("/api/wallcrawler/search/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...params,
+          boards: [params.jobBoard],
+        }),
+      });
+
+      if (!response.ok) {
+        const message = await safeErrorMessage(response);
+        throw new Error(message || "Failed to search jobs");
+      }
+
+      const data = await response.json();
+      return { jobs: data.jobs || [] } as SearchJobsResponse;
+    },
+  });
+
+  const applyToJobMutation = useMutation({
+    mutationFn: async (params: {
+      sessionId: string;
+      jobUrl: string;
+      jobDetails: JobDetails;
+      resumeS3Key?: string;
+      coverLetter?: string;
+    }) => {
+      await ensureReady();
+
+      const response = await fetch("/api/wallcrawler/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(params),
+      });
+
+      if (!response.ok) {
+        const message = await safeErrorMessage(response);
+        throw new Error(message || "Failed to apply to job");
+      }
+
+      const data: ApplyToJobResponse = await response.json();
+      return data;
+    },
+  });
+
+  const resumeSessionMutation = useMutation({
+    mutationFn: async (sessionId: string) => {
+      await ensureReady();
+
+      const response = await fetch(`/api/wallcrawler/session?sessionId=${sessionId}`);
+
+      if (!response.ok) {
+        const message = await safeErrorMessage(response);
+        throw new Error(message || "Failed to resume session");
+      }
+
+      const data: ResumeSessionResponse = await response.json();
+      return data;
+    },
+  });
+
+  const listSessions = useCallback(async () => {
+    const result = await refetchSessions();
+    return result.data ?? cachedSessions ?? [];
+  }, [refetchSessions, cachedSessions]);
 
   const searchJobs = useCallback(
     async (params: {
@@ -161,44 +267,8 @@ export function useAnonymousSession(): UseAnonymousSessionReturn {
       jobBoard: string;
       saveSearch?: boolean;
       searchName?: string;
-    }) => {
-      // Wait for initialization to complete
-      if (!isInitialized) {
-        throw new Error("Session not initialized. Please wait for authentication check to complete.");
-      }
-
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        // Start a new search
-        const response = await fetch("/api/wallcrawler/search/start", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...params,
-            boards: [params.jobBoard],
-            // Anonymous token is in httpOnly cookie
-          }),
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || "Failed to search jobs");
-        }
-
-        const data = await response.json();
-        return { jobs: data.jobs || [] };
-      } catch (err) {
-        const message =
-          err instanceof Error ? err.message : "Failed to search jobs";
-        setError(message);
-        throw err;
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [session, isInitialized]
+    }) => searchJobsMutation.mutateAsync(params),
+    [searchJobsMutation]
   );
 
   const applyToJob = useCallback(
@@ -208,72 +278,45 @@ export function useAnonymousSession(): UseAnonymousSessionReturn {
       jobDetails: JobDetails;
       resumeS3Key?: string;
       coverLetter?: string;
-    }) => {
-      // Wait for initialization to complete
-      if (!isInitialized) {
-        throw new Error("Session not initialized. Please wait for authentication check to complete.");
-      }
-
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        const response = await fetch("/api/wallcrawler/apply", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...params,
-            // Anonymous token is in httpOnly cookie
-          }),
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || "Failed to apply to job");
-        }
-
-        const data: ApplyToJobResponse = await response.json();
-        return data;
-      } catch (err) {
-        const message =
-          err instanceof Error ? err.message : "Failed to apply to job";
-        setError(message);
-        throw err;
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [session, isInitialized]
+    }) => applyToJobMutation.mutateAsync(params),
+    [applyToJobMutation]
   );
 
-  const resumeSession = useCallback(async (sessionId: string) => {
-    setIsLoading(true);
-    setError(null);
+  const resumeSession = useCallback(
+    async (sessionId: string) => resumeSessionMutation.mutateAsync(sessionId),
+    [resumeSessionMutation]
+  );
 
-    try {
-      const response = await fetch(
-        `/api/wallcrawler/session?sessionId=${sessionId}`
-      );
+  const isLoading =
+    authLoading ||
+    tokenLoading ||
+    tokenFetching ||
+    sessionsFetching ||
+    searchJobsMutation.isPending ||
+    applyToJobMutation.isPending ||
+    resumeSessionMutation.isPending;
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to resume session");
-      }
+  const latestError =
+    tokenError ||
+    sessionsError ||
+    searchJobsMutation.error ||
+    applyToJobMutation.error ||
+    resumeSessionMutation.error;
 
-      const data: ResumeSessionResponse = await response.json();
-      return data;
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Failed to resume session";
-      setError(message);
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  const error = latestError
+    ? latestError instanceof Error
+      ? latestError.message
+      : String(latestError)
+    : null;
+
+  const isInitialized = isAuthenticated
+    ? !authLoading
+    : !authLoading && (tokenFetched || !!hasAnonymousToken || tokenIsError);
+
+  const anonymousId = !isAuthenticated && hasAnonymousToken ? "anonymous" : null;
 
   return {
-    anonymousId: hasAnonymousToken ? "anonymous" : null, // Just indicate if we have a token
+    anonymousId,
     isLoading,
     error,
     resumeSession,

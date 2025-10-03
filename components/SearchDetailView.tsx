@@ -1,12 +1,9 @@
-"use client";
-
 import React, { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Progress } from "./ui/progress";
 import { Input } from "./ui/input";
-import { Textarea } from "./ui/textarea";
 import { ScrollArea } from "./ui/scroll-area";
 import {
   ArrowLeft,
@@ -14,12 +11,10 @@ import {
   Pause,
   Square,
   Send,
-  Bookmark,
   ExternalLink,
   MapPin,
   DollarSign,
   Clock,
-  Building,
   Eye,
   Heart,
   MessageSquare,

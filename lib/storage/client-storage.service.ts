@@ -1,5 +1,3 @@
-"use client";
-
 import {
   SavedJob,
   SavedSearch,
@@ -18,22 +16,33 @@ class ClientStorageServiceImpl implements ClientStorageService {
   ) {}
 
   // Helper method for API calls
-  private async fetchAPI(endpoint: string, options?: RequestInit) {
+  private async fetchAPI<T = unknown>(endpoint: string, options?: RequestInit) {
     const response = await fetch(endpoint, {
       ...options,
       headers: {
         "Content-Type": "application/json",
         ...options?.headers,
       },
+      credentials: "include",
     });
 
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || `API call failed: ${response.status}`);
+    let data: unknown = null;
+    const contentType = response.headers.get("content-type");
+    if (contentType && contentType.includes("application/json")) {
+      data = await response.json();
+    } else if (contentType && contentType.includes("text")) {
+      data = await response.text();
     }
 
-    return data;
+    if (!response.ok) {
+      const message =
+        (data && typeof data === "object" && "error" in data
+          ? (data as { error?: string }).error
+          : undefined) || `API call failed: ${response.status}`;
+      throw new Error(message);
+    }
+
+    return data as T;
   }
 
   // Saved Jobs
@@ -77,7 +86,7 @@ class ClientStorageServiceImpl implements ClientStorageService {
 
   async deleteSavedJob(jobId: string): Promise<void> {
     if (this.isAuthenticated) {
-      await this.fetchAPI(`/api/jobs/saved?jobId=${jobId}`, {
+      await this.fetchAPI(`/api/jobs/saved/${jobId}`, {
         method: "DELETE",
       });
     } else {
@@ -97,7 +106,7 @@ class ClientStorageServiceImpl implements ClientStorageService {
     };
 
     if (this.isAuthenticated) {
-      const data = await this.fetchAPI("/api/searches/saved", {
+      const data = await this.fetchAPI("/api/user/searches/saved", {
         method: "POST",
         body: JSON.stringify(searchData),
       });
@@ -112,7 +121,9 @@ class ClientStorageServiceImpl implements ClientStorageService {
 
   async getSavedSearch(searchId: string): Promise<SavedSearch | null> {
     if (this.isAuthenticated) {
-      const data = await this.fetchAPI(`/api/searches/saved/${searchId}`);
+      const data = await this.fetchAPI(
+        `/api/user/searches/saved/${searchId}`
+      );
       return data.search || null;
     } else {
       return localStorageService.getSavedSearch("anonymous", searchId);
@@ -121,7 +132,7 @@ class ClientStorageServiceImpl implements ClientStorageService {
 
   async getSavedSearches(): Promise<SavedSearch[]> {
     if (this.isAuthenticated) {
-      const data = await this.fetchAPI("/api/searches/saved");
+      const data = await this.fetchAPI("/api/user/searches/saved");
       return data.searches || [];
     } else {
       return localStorageService.getSavedSearches("anonymous");
@@ -130,9 +141,12 @@ class ClientStorageServiceImpl implements ClientStorageService {
 
   async updateSearchLastRun(searchId: string): Promise<void> {
     if (this.isAuthenticated) {
-      await this.fetchAPI(`/api/searches/saved/${searchId}/last-run`, {
-        method: "PUT",
-      });
+      await this.fetchAPI(
+        `/api/user/searches/saved/${searchId}/last-run`,
+        {
+          method: "PUT",
+        }
+      );
     } else {
       await localStorageService.updateSearchLastRun("anonymous", searchId);
     }
@@ -143,7 +157,7 @@ class ClientStorageServiceImpl implements ClientStorageService {
   ): Promise<SavedSearch> {
     if (this.isAuthenticated && this.userId) {
       const data = await this.fetchAPI(
-        `/api/searches/saved/${search.searchId}`,
+        `/api/user/searches/saved/${search.searchId}`,
         {
           method: "PUT",
           body: JSON.stringify(search),
@@ -160,7 +174,7 @@ class ClientStorageServiceImpl implements ClientStorageService {
 
   async deleteSavedSearch(searchId: string): Promise<void> {
     if (this.isAuthenticated) {
-      await this.fetchAPI(`/api/searches/saved?searchId=${searchId}`, {
+      await this.fetchAPI(`/api/user/searches/saved/${searchId}`, {
         method: "DELETE",
       });
     } else {
@@ -194,7 +208,9 @@ class ClientStorageServiceImpl implements ClientStorageService {
 
   async getApplication(applicationId: string): Promise<JobApplication | null> {
     if (this.isAuthenticated) {
-      const data = await this.fetchAPI(`/api/applications/${applicationId}`);
+      const data = await this.fetchAPI(
+        `/api/applications/${applicationId}`
+      );
       return data.application || null;
     } else {
       return localStorageService.getApplication("anonymous", applicationId);
@@ -239,7 +255,7 @@ class ClientStorageServiceImpl implements ClientStorageService {
       boardId: `board_${Date.now()}`,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      jobs: board.jobIds || [],
+      jobIds: board.jobIds || [],
     };
 
     if (this.isAuthenticated) {
@@ -415,10 +431,20 @@ class ClientStorageServiceImpl implements ClientStorageService {
     searches: Omit<SavedSearch, "userId">[]
   ): Promise<void> {
     if (this.isAuthenticated && this.userId) {
-      await this.fetchAPI("/api/searches/saved/initialize", {
-        method: "POST",
-        body: JSON.stringify({ searches }),
-      });
+      await Promise.all(
+        searches.map((search) =>
+          this.saveSearch({
+            name: search.name,
+            keywords: search.keywords,
+            location: search.location,
+            jobBoards: search.jobBoards,
+            filters: search.filters,
+            runFrequency: search.runFrequency,
+            skills: search.skills,
+            workPreferences: search.workPreferences,
+          })
+        )
+      );
     } else {
       await localStorageService.initializeDefaultSearches(
         "anonymous",
@@ -429,19 +455,15 @@ class ClientStorageServiceImpl implements ClientStorageService {
 
   async hasInitializedSearches(): Promise<boolean> {
     if (this.isAuthenticated && this.userId) {
-      const data = await this.fetchAPI("/api/searches/saved/initialized");
-      return data.initialized || false;
+      const existing = await this.getSavedSearches();
+      return existing.length > 0;
     } else {
       return localStorageService.hasInitializedSearches("anonymous");
     }
   }
 
   async markSearchesInitialized(): Promise<void> {
-    if (this.isAuthenticated && this.userId) {
-      await this.fetchAPI("/api/searches/saved/mark-initialized", {
-        method: "POST",
-      });
-    } else {
+    if (!this.isAuthenticated) {
       await localStorageService.markSearchesInitialized("anonymous");
     }
   }

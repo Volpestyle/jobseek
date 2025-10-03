@@ -1,7 +1,5 @@
-"use client";
-
 import React from "react";
-import { useRouter } from "next/navigation";
+import { useNavigate } from "@tanstack/react-router";
 import {
   Card,
   CardContent,
@@ -24,7 +22,7 @@ import { useProfile } from "@/hooks/use-profile";
 
 export function OverviewPage() {
   const { loading, error, displayName } = useProfile();
-  const router = useRouter();
+  const navigate = useNavigate();
 
   const stats = [
     {
@@ -158,7 +156,11 @@ export function OverviewPage() {
                 <Progress value={search.progress} className="h-2" />
               </div>
             ))}
-            <Button variant="outline" className="w-full">
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => navigate({ to: "/dashboard/active-searches" })}
+            >
               View All Searches
             </Button>
           </CardContent>
@@ -195,7 +197,11 @@ export function OverviewPage() {
                 </div>
               </div>
             ))}
-            <Button variant="outline" className="w-full">
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => navigate({ to: "/dashboard/active-searches" })}
+            >
               View Calendar
             </Button>
           </CardContent>

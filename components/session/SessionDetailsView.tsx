@@ -1,36 +1,28 @@
-"use client";
-
-import { useState, useEffect } from "react";
-import dynamic from "next/dynamic";
+import { useState, useEffect, Suspense, lazy } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ActionLogsPanel } from "./ActionLogsPanel";
 import { JobsTable } from "./JobsTable";
+import type { SessionJob } from "./JobsTable";
+import type {
+  SessionDetails,
+  SessionActionLog,
+} from "@/hooks/use-session-details";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Monitor, List, Activity } from "lucide-react";
 
-// Dynamically import BrowserViewport to avoid SSR issues
-const BrowserViewport = dynamic(
-  () =>
-    import("@wallcrawler/components").then((mod) => ({
-      default: mod.BrowserViewport,
-    })),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="w-full h-[600px] bg-gray-100 rounded-lg flex items-center justify-center">
-        <Skeleton className="w-full h-full" />
-      </div>
-    ),
-  }
+const BrowserViewport = lazy(() =>
+  import("@wallcrawler/components").then((mod) => ({
+    default: mod.BrowserViewport,
+  }))
 );
 
 interface SessionDetailsViewProps {
   sessionId: string;
-  session: any;
-  jobs: any[];
-  actionLogs: any[];
+  session: SessionDetails | null;
+  jobs: SessionJob[];
+  actionLogs: SessionActionLog[];
   totalJobs: number;
   currentPage: number;
   pageSize: number;
@@ -49,7 +41,7 @@ export function SessionDetailsView({
   onPageChange,
   isLoading,
 }: SessionDetailsViewProps) {
-  const [stagehandPage, setStagehandPage] = useState<any>(null);
+  const stagehandPage = null;
   const [viewportError, setViewportError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("browser");
 
@@ -115,17 +107,25 @@ export function SessionDetailsView({
               </CardHeader>
               <CardContent>
                 {isSessionActive && stagehandPage ? (
-                  <BrowserViewport
-                    sessionId={sessionId}
-                    stagehandPage={stagehandPage}
-                    width={1280}
-                    height={720}
-                    quality={80}
-                    frameRate={10}
-                    enableInteraction={false}
-                    onError={(error) => setViewportError(error.message)}
-                    className="rounded-lg border"
-                  />
+                  <Suspense
+                    fallback={
+                      <div className="w-full h-[600px] bg-gray-100 rounded-lg flex items-center justify-center">
+                        <Skeleton className="w-full h-full" />
+                      </div>
+                    }
+                  >
+                    <BrowserViewport
+                      sessionId={sessionId}
+                      stagehandPage={stagehandPage}
+                      width={1280}
+                      height={720}
+                      quality={80}
+                      frameRate={10}
+                      enableInteraction={false}
+                      onError={(error) => setViewportError(error.message)}
+                      className="rounded-lg border"
+                    />
+                  </Suspense>
                 ) : (
                   <div className="w-full h-[600px] bg-gray-50 rounded-lg flex items-center justify-center">
                     <div className="text-center text-muted-foreground">

@@ -1,19 +1,17 @@
-"use client";
-
 import { useEffect, useState } from "react";
-import { useSession } from "next-auth/react";
 import { DataMigrationDialog } from "./data-migration-dialog";
 import { migrationService } from "@/lib/migration/migration.service";
+import { useAuth } from "@/contexts/auth-context";
 
 export function MigrationCheck() {
-  const { data: session, status } = useSession();
+  const { user, isLoading } = useAuth();
   const [showMigrationDialog, setShowMigrationDialog] = useState(false);
 
   useEffect(() => {
-    if (status === "loading") return;
+    if (isLoading) return;
 
     // Only check for migration if user is authenticated
-    if (session?.user?.id) {
+    if (user?.id) {
       const migrationStatus = migrationService.getMigrationStatus();
       const hasData = migrationService.hasAnonymousData();
 
@@ -30,7 +28,7 @@ export function MigrationCheck() {
         setShowMigrationDialog(true);
       }
     }
-  }, [session, status]);
+  }, [user, isLoading]);
 
   return (
     <DataMigrationDialog

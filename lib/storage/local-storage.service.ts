@@ -4,6 +4,7 @@ import {
   JobApplication,
   JobBoard,
   JobSearchResult,
+  UserProfile,
 } from "../db/dynamodb.service";
 import { MIGRATION_KEYS } from "../migration/migration.service";
 
@@ -69,13 +70,16 @@ export class LocalStorageService {
     }
   }
 
-  private findItemIndex<T extends { userId: string; [key: string]: any }>(
+  private findItemIndex<T extends { userId: string }>(
     items: T[],
     itemId: string,
-    idField: string
+    idField: Extract<keyof T, string>
   ): number {
     // For anonymous users, just match by ID since data is local to browser
-    return items.findIndex((item) => item[idField] === itemId);
+    return items.findIndex((item) => {
+      const value = item[idField];
+      return value !== undefined && String(value) === itemId;
+    });
   }
 
   // Saved Jobs
@@ -95,18 +99,19 @@ export class LocalStorageService {
     return jobWithUserId;
   }
 
-  async getSavedJob(userId: string, jobId: string): Promise<SavedJob | null> {
+  async getSavedJob(_userId: string, jobId: string): Promise<SavedJob | null> {
     const jobs = this.getItems<SavedJob>(STORAGE_KEYS.SAVED_JOBS);
     // For anonymous users, just match by jobId since data is local to browser
     return jobs.find((job) => job.jobId === jobId) || null;
   }
 
-  async getSavedJobs(userId: string): Promise<SavedJob[]> {
+  async getSavedJobs(_userId: string): Promise<SavedJob[]> {
+    void _userId;
     // For anonymous users, return all jobs since data is local to browser
     return this.getItems<SavedJob>(STORAGE_KEYS.SAVED_JOBS);
   }
 
-  async deleteSavedJob(userId: string, jobId: string): Promise<void> {
+  async deleteSavedJob(_userId: string, jobId: string): Promise<void> {
     const jobs = this.getItems<SavedJob>(STORAGE_KEYS.SAVED_JOBS);
     // For anonymous users, just filter by jobId since data is local to browser
     const filteredJobs = jobs.filter((job) => job.jobId !== jobId);
@@ -135,7 +140,7 @@ export class LocalStorageService {
   }
 
   async getSavedSearch(
-    userId: string,
+    _userId: string,
     searchId: string
   ): Promise<SavedSearch | null> {
     const searches = this.getItems<SavedSearch>(STORAGE_KEYS.SAVED_SEARCHES);
@@ -143,12 +148,13 @@ export class LocalStorageService {
     return searches.find((search) => search.searchId === searchId) || null;
   }
 
-  async getSavedSearches(userId: string): Promise<SavedSearch[]> {
+  async getSavedSearches(_userId: string): Promise<SavedSearch[]> {
+    void _userId;
     // For anonymous users, return all searches since data is local to browser
     return this.getItems<SavedSearch>(STORAGE_KEYS.SAVED_SEARCHES);
   }
 
-  async updateSearchLastRun(userId: string, searchId: string): Promise<void> {
+  async updateSearchLastRun(_userId: string, searchId: string): Promise<void> {
     const searches = this.getItems<SavedSearch>(STORAGE_KEYS.SAVED_SEARCHES);
     const index = this.findItemIndex(searches, searchId, "searchId");
 
@@ -181,7 +187,7 @@ export class LocalStorageService {
     return this.saveSearch(search);
   }
 
-  async deleteSavedSearch(userId: string, searchId: string): Promise<void> {
+  async deleteSavedSearch(_userId: string, searchId: string): Promise<void> {
     const searches = this.getItems<SavedSearch>(STORAGE_KEYS.SAVED_SEARCHES);
     // For anonymous users, just filter by searchId since data is local to browser
     const filteredSearches = searches.filter(
@@ -214,7 +220,7 @@ export class LocalStorageService {
   }
 
   async getApplication(
-    userId: string,
+    _userId: string,
     applicationId: string
   ): Promise<JobApplication | null> {
     const applications = this.getItems<JobApplication>(
@@ -224,13 +230,14 @@ export class LocalStorageService {
     return applications.find((app) => app.applicationId === applicationId) || null;
   }
 
-  async getApplications(userId: string): Promise<JobApplication[]> {
+  async getApplications(_userId: string): Promise<JobApplication[]> {
+    void _userId;
     // For anonymous users, return all applications since data is local to browser
     return this.getItems<JobApplication>(STORAGE_KEYS.APPLICATIONS);
   }
 
   async updateApplicationStatus(
-    userId: string,
+    _userId: string,
     applicationId: string,
     status: JobApplication["status"],
     notes?: string
@@ -262,19 +269,20 @@ export class LocalStorageService {
     return boardWithUserId;
   }
 
-  async getJobBoard(userId: string, boardId: string): Promise<JobBoard | null> {
+  async getJobBoard(_userId: string, boardId: string): Promise<JobBoard | null> {
     const boards = this.getItems<JobBoard>(STORAGE_KEYS.JOB_BOARDS);
     // For anonymous users, just match by boardId since data is local to browser
     return boards.find((board) => board.boardId === boardId) || null;
   }
 
-  async getJobBoards(userId: string): Promise<JobBoard[]> {
+  async getJobBoards(_userId: string): Promise<JobBoard[]> {
+    void _userId;
     // For anonymous users, return all boards since data is local to browser
     return this.getItems<JobBoard>(STORAGE_KEYS.JOB_BOARDS);
   }
 
   async addJobToBoard(
-    userId: string,
+    _userId: string,
     boardId: string,
     jobId: string
   ): Promise<void> {
@@ -289,7 +297,7 @@ export class LocalStorageService {
   }
 
   async removeJobFromBoard(
-    userId: string,
+    _userId: string,
     boardId: string,
     jobId: string
   ): Promise<void> {
@@ -303,7 +311,7 @@ export class LocalStorageService {
     }
   }
 
-  async deleteJobBoard(userId: string, boardId: string): Promise<void> {
+  async deleteJobBoard(_userId: string, boardId: string): Promise<void> {
     const boards = this.getItems<JobBoard>(STORAGE_KEYS.JOB_BOARDS);
     // For anonymous users, just filter by boardId since data is local to browser
     const filteredBoards = boards.filter(
@@ -314,7 +322,7 @@ export class LocalStorageService {
 
   // User Board Preferences
   async initializeUserJobBoards(
-    userId: string,
+    _userId: string,
     boardIds: string[]
   ): Promise<void> {
     if (typeof window === "undefined") {
@@ -331,7 +339,8 @@ export class LocalStorageService {
     }
   }
 
-  async isUserInitialized(userId: string): Promise<boolean> {
+  async isUserInitialized(_userId: string): Promise<boolean> {
+    void _userId;
     if (typeof window === "undefined") {
       return false;
     }
@@ -339,7 +348,8 @@ export class LocalStorageService {
     return localStorage.getItem(STORAGE_KEYS.USER_INITIALIZED) === "true";
   }
 
-  async getUserSavedBoards(userId: string): Promise<string[]> {
+  async getUserSavedBoards(_userId: string): Promise<string[]> {
+    void _userId;
     if (typeof window === "undefined") {
       return [];
     }
@@ -354,7 +364,7 @@ export class LocalStorageService {
   }
 
   async saveUserBoardPreference(
-    userId: string,
+    _userId: string,
     boardId: string,
     saved: boolean
   ): Promise<void> {
@@ -363,7 +373,7 @@ export class LocalStorageService {
     }
 
     try {
-      const boards = await this.getUserSavedBoards(userId);
+      const boards = await this.getUserSavedBoards(this.userId);
       let updatedBoards: string[];
 
       if (saved) {
@@ -386,7 +396,7 @@ export class LocalStorageService {
 
   // Saved Searches Initialization
   async initializeDefaultSearches(
-    userId: string,
+    _userId: string,
     searches: Omit<SavedSearch, "userId">[]
   ): Promise<void> {
     if (typeof window === "undefined") {
@@ -413,7 +423,8 @@ export class LocalStorageService {
     }
   }
 
-  async hasInitializedSearches(userId: string): Promise<boolean> {
+  async hasInitializedSearches(_userId: string): Promise<boolean> {
+    void _userId;
     if (typeof window === "undefined") {
       return false;
     }
@@ -421,7 +432,8 @@ export class LocalStorageService {
     return localStorage.getItem(STORAGE_KEYS.SEARCHES_INITIALIZED) === "true";
   }
 
-  async markSearchesInitialized(userId: string): Promise<void> {
+  async markSearchesInitialized(_userId: string): Promise<void> {
+    void _userId;
     if (typeof window === "undefined") {
       return;
     }
@@ -463,7 +475,7 @@ export class LocalStorageService {
   }
 
   async getJobSearchResults(
-    userId: string,
+    _userId: string,
     searchId: string
   ): Promise<JobSearchResult | null> {
     const results = this.getItems<JobSearchResult>(
@@ -477,12 +489,12 @@ export class LocalStorageService {
   }
 
   async updateJobSearchResults(
-    userId: string,
+    _userId: string,
     searchId: string,
     updates: Partial<JobSearchResult>
   ): Promise<JobSearchResult> {
     const currentResults = await this.getJobSearchResults(
-      userId,
+      this.userId,
       searchId
     );
     if (!currentResults) {
@@ -500,7 +512,8 @@ export class LocalStorageService {
     return this.saveJobSearchResults(updatedResults);
   }
 
-  async getAllJobSearchResults(userId: string): Promise<JobSearchResult[]> {
+  async getAllJobSearchResults(_userId: string): Promise<JobSearchResult[]> {
+    void _userId;
     const results = this.getItems<JobSearchResult>(
       STORAGE_KEYS.JOB_SEARCH_RESULTS
     );
@@ -508,7 +521,8 @@ export class LocalStorageService {
   }
 
   // User Profile
-  async getUserProfile(userId: string): Promise<any | null> {
+  async getUserProfile(_userId: string): Promise<UserProfile | null> {
+    void _userId;
     if (typeof window === "undefined") {
       return null;
     }
@@ -519,14 +533,14 @@ export class LocalStorageService {
     }
 
     try {
-      return JSON.parse(profileData);
+      return JSON.parse(profileData) as UserProfile;
     } catch (error) {
       console.error("Error parsing profile data:", error);
       return null;
     }
   }
 
-  async saveUserProfile(profile: any): Promise<any> {
+  async saveUserProfile(profile: UserProfile): Promise<UserProfile> {
     if (typeof window === "undefined") {
       return profile;
     }
@@ -535,12 +549,23 @@ export class LocalStorageService {
     return profile;
   }
 
-  async updateUserProfile(userId: string, updates: any): Promise<any> {
-    const currentProfile = await this.getUserProfile(userId);
-    const updatedProfile = {
-      ...currentProfile,
+  async updateUserProfile(
+    _userId: string,
+    updates: Partial<UserProfile>
+  ): Promise<UserProfile> {
+    const currentProfile = await this.getUserProfile(this.userId);
+    const baseProfile =
+      currentProfile ??
+      ({
+        userId: this.userId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      } as UserProfile);
+
+    const updatedProfile: UserProfile = {
+      ...baseProfile,
       ...updates,
-      userId,
+      userId: this.userId,
       updatedAt: new Date().toISOString(),
     };
 

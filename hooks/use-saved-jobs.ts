@@ -1,81 +1,94 @@
-"use client";
-
-import { useState, useEffect, useCallback } from "react";
+import { useMemo } from "react";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useAuth } from "@/contexts/auth-context";
-import { SavedJob } from "@/lib/storage/storage.service";
+import type { SavedJob } from "@/lib/storage/storage.service";
+
+type SaveJobInput = Omit<SavedJob, "userId" | "savedAt">;
 
 export function useSavedJobs() {
-  const { storage, isLoading: authLoading } = useAuth();
-  const [jobs, setJobs] = useState<SavedJob[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { storage, isLoading: authLoading, isAuthenticated, userId } = useAuth();
+  const queryClient = useQueryClient();
 
-  // Load jobs on mount and when storage changes
-  const loadJobs = useCallback(async () => {
-    if (!storage || authLoading) return;
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const savedJobs = await storage.getSavedJobs();
-      setJobs(savedJobs);
-    } catch (err) {
-      console.error("Failed to load saved jobs:", err);
-      setError(err instanceof Error ? err.message : "Failed to load jobs");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [storage, authLoading]);
-
-  useEffect(() => {
-    loadJobs();
-  }, [loadJobs]);
-
-  // Save a job
-  const saveJob = useCallback(
-    async (job: Omit<SavedJob, "userId" | "savedAt">) => {
-      if (!storage) return;
-
-      try {
-        const savedJob = await storage.saveJob(job);
-        // Add to local state immediately for optimistic UI
-        setJobs((prev) => [...prev, savedJob]);
-      } catch (err) {
-        console.error("Failed to save job:", err);
-        // Reload jobs to ensure consistency
-        await loadJobs();
-        throw err;
-      }
-    },
-    [storage, loadJobs]
+  const queryKey = useMemo<(string | undefined)[]>(
+    () => ["savedJobs", isAuthenticated ? userId ?? "authenticated" : "anonymous"],
+    [isAuthenticated, userId]
   );
 
-  // Delete a job
-  const deleteJob = useCallback(
-    async (jobId: string) => {
-      if (!storage) return;
-
-      try {
-        await storage.deleteSavedJob(jobId);
-        // Remove from local state immediately for optimistic UI
-        setJobs((prev) => prev.filter((job) => job.jobId !== jobId));
-      } catch (err) {
-        console.error("Failed to delete job:", err);
-        // Reload jobs to ensure consistency
-        await loadJobs();
-        throw err;
+  const savedJobsQuery = useQuery<SavedJob[]>({
+    queryKey,
+    enabled: !authLoading && !!storage,
+    queryFn: async () => {
+      if (!storage) {
+        throw new Error("Storage not initialized");
       }
+      return storage.getSavedJobs();
     },
-    [storage, loadJobs]
-  );
+    staleTime: 30_000,
+  });
+
+  const saveJobMutation = useMutation({
+    mutationFn: async (job: SaveJobInput) => {
+      if (!storage) {
+        throw new Error("Storage not initialized");
+      }
+      return storage.saveJob(job);
+    },
+    onSuccess: (savedJob) => {
+      queryClient.setQueryData<SavedJob[] | undefined>(queryKey, (data) => {
+        const existing = data ?? [];
+        const withoutDuplicate = existing.filter(
+          (job) => job.jobId !== savedJob.jobId
+        );
+        return [...withoutDuplicate, savedJob];
+      });
+    },
+  });
+
+  const deleteJobMutation = useMutation({
+    mutationFn: async (jobId: string) => {
+      if (!storage) {
+        throw new Error("Storage not initialized");
+      }
+      await storage.deleteSavedJob(jobId);
+      return jobId;
+    },
+    onSuccess: (jobId) => {
+      queryClient.setQueryData<SavedJob[] | undefined>(queryKey, (data) => {
+        if (!data) return data;
+        return data.filter((job) => job.jobId !== jobId);
+      });
+    },
+  });
+
+  const error = savedJobsQuery.error
+    ? savedJobsQuery.error instanceof Error
+      ? savedJobsQuery.error.message
+      : "Failed to load jobs"
+    : null;
+
+  const refreshJobs = async () => {
+    await queryClient.invalidateQueries({ queryKey });
+  };
+
+  const saveJob = async (job: SaveJobInput) => {
+    const result = await saveJobMutation.mutateAsync(job);
+    return result;
+  };
+
+  const deleteJob = async (jobId: string) => {
+    await deleteJobMutation.mutateAsync(jobId);
+  };
 
   return {
-    jobs,
-    isLoading: isLoading || authLoading,
+    jobs: savedJobsQuery.data ?? [],
+    isLoading: authLoading || savedJobsQuery.isLoading,
     error,
     saveJob,
     deleteJob,
-    refreshJobs: loadJobs,
+    refreshJobs,
   };
 }

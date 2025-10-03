@@ -1,5 +1,3 @@
-"use client";
-
 import React, {
   createContext,
   useContext,
@@ -7,32 +5,63 @@ import React, {
   useState,
   ReactNode,
 } from "react";
-import { useSession, signOut as nextAuthSignOut } from "next-auth/react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClientStorageService } from "@/lib/storage/client-storage.service";
 import { ClientStorageService } from "@/lib/storage/storage.interface";
-import { storageService } from "@/lib/storage/storage.service";
 
 interface AuthContextType {
   isAuthenticated: boolean;
   isAnonymous: boolean;
   isLoading: boolean;
   userId: string | null;
+  user: SessionUser | null;
   storage: ClientStorageService | null;
   promptSignIn: () => void;
   migrateAnonymousData: () => Promise<void>;
   signOut: () => Promise<void>;
 }
 
+interface SessionUser {
+  id?: string;
+  email?: string | null;
+  name?: string | null;
+  image?: string | null;
+}
+
+interface SessionResponse {
+  user: SessionUser | null;
+}
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+async function fetchSession(): Promise<SessionResponse> {
+  const response = await fetch("/api/auth/session", {
+    credentials: "include",
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch session");
+  }
+
+  return response.json();
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const { data: session, status } = useSession();
+  const queryClient = useQueryClient();
+  const {
+    data: session,
+    isLoading: isSessionLoading,
+  } = useQuery({
+    queryKey: ["session"],
+    queryFn: fetchSession,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
   const [storage, setStorage] = useState<ClientStorageService | null>(null);
   const [storageInitialized, setStorageInitialized] = useState(false);
-
-  const isSessionLoading = status === "loading";
-  const isAuthenticated = !!session?.user;
-  const userId = session?.user?.id || null;
+  const sessionUser = session?.user ?? null;
+  const isAuthenticated = !!sessionUser;
+  const userId = sessionUser?.id || null;
 
   // Combined loading state: session is loading OR storage not initialized
   const isLoading = isSessionLoading || !storageInitialized;
@@ -58,21 +87,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const migrateAnonymousData = async () => {
-    if (!isAuthenticated || !session?.user?.id) {
+    if (!isAuthenticated || !sessionUser?.id) {
       throw new Error("User must be authenticated to migrate data");
     }
 
     try {
       // Use the new unified migration service
-      const { migrationService } = await import("@/lib/migration/migration.service");
-      const result = await migrationService.migrate(session.user.id);
-      
+      const { migrationService } = await import(
+        "@/lib/migration/migration.service"
+      );
+      const result = await migrationService.migrate(sessionUser.id);
+
       if (!result.success) {
         throw new Error(result.errors.join(", "));
       }
-      
+
       // Refresh storage with new authenticated client
-      const authStorage = createClientStorageService(true, session.user.id);
+      const authStorage = createClientStorageService(true, sessionUser.id);
       setStorage(authStorage);
     } catch (error) {
       console.error("Failed to migrate anonymous data:", error);
@@ -82,9 +113,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     try {
-      // Sign out from NextAuth (this will clear the session cookie)
-      await nextAuthSignOut({ redirect: false });
-      // Redirect to home
+      await fetch("/api/auth/signout", {
+        method: "POST",
+        credentials: "include",
+      });
+      await queryClient.invalidateQueries({ queryKey: ["session"] });
       window.location.href = "/";
     } catch (error) {
       console.error("Failed to sign out:", error);
@@ -98,6 +131,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAnonymous: !isAuthenticated && !!storage,
         isLoading,
         userId,
+        user: sessionUser,
         storage,
         promptSignIn,
         migrateAnonymousData,

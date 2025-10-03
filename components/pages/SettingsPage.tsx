@@ -9,7 +9,6 @@ import {
 import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
 import { Label } from "../ui/label";
-import { Input } from "../ui/input";
 import {
   Select,
   SelectContent,

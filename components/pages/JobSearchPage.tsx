@@ -1,5 +1,3 @@
-"use client";
-
 import React, { useState } from "react";
 import { toast } from "sonner";
 import {
@@ -12,7 +10,6 @@ import {
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { Textarea } from "../ui/textarea";
 import {
   Select,
   SelectContent,
@@ -40,11 +37,6 @@ import {
   X,
   Save,
   Play,
-  MapPin,
-  DollarSign,
-  Clock,
-  Star,
-  StarOff,
   Edit,
   Trash2,
 } from "lucide-react";
@@ -52,10 +44,11 @@ import { useSavedBoards } from "@/hooks/use-saved-boards";
 import { useSavedSearches } from "@/hooks/use-saved-searches";
 import { Skeleton } from "../ui/skeleton";
 import { SavedSearch } from "@/lib/storage/storage.service";
-import { useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
+import { useNavigate } from "@tanstack/react-router";
 import { useAnonymousSession } from "@/hooks/use-anonymous-session";
 import { AnimatedSaveButton } from "../ui/animated-save-button";
+import { fetchWithAnonymousRetry } from "@/lib/auth/anonymous-client";
+import { useAuth } from "@/contexts/auth-context";
 
 export function JobSearchPage() {
   const {
@@ -73,8 +66,8 @@ export function JobSearchPage() {
     deleteSearch,
   } = useSavedSearches();
 
-  const router = useRouter();
-  const { data: authSession } = useSession();
+  const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
   const { anonymousId } = useAnonymousSession();
 
   // Form state
@@ -218,10 +211,15 @@ export function JobSearchPage() {
   // Handle save/update
   const handleSaveSearch = async () => {
     try {
+      if (!searchName.trim() || !keywords.trim()) {
+        toast.error("Please provide both a search name and job keywords.");
+        return;
+      }
+
       const searchData = {
-        name: searchName,
-        keywords,
-        location,
+        name: searchName.trim(),
+        keywords: keywords.trim(),
+        location: location.trim(),
         jobBoards: selectedBoards,
         filters: {
           salaryMin: salaryMin ? parseInt(salaryMin) : undefined,
@@ -318,31 +316,42 @@ export function JobSearchPage() {
       }
 
       // Start a new Wallcrawler session
-      const response = await fetch("/api/wallcrawler/search/start", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          keywords: searchKeywords,
-          location: searchLocation,
-          boards: searchBoards,
-          salary: searchSalary,
-          anonymousId: anonymousId || undefined,
-        }),
-      });
+      const response = await fetchWithAnonymousRetry(
+        "/api/wallcrawler/search/start",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            keywords: searchKeywords,
+            location: searchLocation,
+            boards: searchBoards,
+            salary: searchSalary,
+            anonymousId: anonymousId || undefined,
+          }),
+          },
+          { skipRefresh: isAuthenticated }
+        );
+
+      if (response.status === 401) {
+        throw new Error("Authentication required. Please refresh or sign in.");
+      }
 
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.error || "Failed to start search");
       }
 
-      const { sessionId, debugUrl } = await response.json();
+      const { sessionId } = await response.json();
+      if (sessionId) {
+        setRunningSearchId(sessionId);
+      }
 
       toast.success("Search started successfully!");
 
       // Navigate to active searches page to see the running search
-      router.push("/dashboard/active-searches");
+      navigate({ to: "/dashboard/active-searches" });
     } catch (error) {
       console.error("Failed to run search:", error);
       toast.error(

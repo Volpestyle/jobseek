@@ -1,12 +1,16 @@
-"use client";
-
-import { useState, useEffect } from "react";
-import { useStorage } from "@/contexts/auth-context";
+import { useMemo } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuth, useStorage } from "@/contexts/auth-context";
 import {
   DEFAULT_JOB_BOARDS,
   DEFAULT_SAVED_BOARD_IDS,
   JobBoardConfig,
 } from "@/lib/constants/default-job-boards";
+
+type SavedBoardsQueryData = {
+  savedBoardIds: string[];
+  initialized: boolean;
+};
 
 interface UseSavedBoardsReturn {
   allBoards: JobBoardConfig[];
@@ -20,85 +24,123 @@ interface UseSavedBoardsReturn {
 
 export function useSavedBoards(): UseSavedBoardsReturn {
   const { storage, isLoading: storageLoading } = useStorage();
-  const [savedBoardIds, setSavedBoardIds] = useState<string[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isInitialized, setIsInitialized] = useState(false);
+  const { userId, isAuthenticated } = useAuth();
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    if (storageLoading || !storage) return;
+  const queryKey = useMemo<(string | undefined)[]>(
+    () => ["savedBoards", isAuthenticated ? userId ?? "authenticated" : "anonymous"],
+    [isAuthenticated, userId]
+  );
 
-    const initializeBoards = async () => {
+  const savedBoardsQuery = useQuery<SavedBoardsQueryData>({
+    queryKey,
+    enabled: !storageLoading && !!storage,
+    queryFn: async () => {
+      if (!storage) {
+        return {
+          savedBoardIds: DEFAULT_SAVED_BOARD_IDS,
+          initialized: false,
+        };
+      }
+
       try {
-        setIsLoading(true);
-
-        // Check if user has been initialized
-        const initialized = await storage.isUserInitialized();
-        setIsInitialized(initialized);
+        const initialized = (await storage.isUserInitialized?.()) ?? false;
 
         if (!initialized) {
-          // Initialize with default boards
-          await storage.initializeUserJobBoards(DEFAULT_SAVED_BOARD_IDS);
-          setSavedBoardIds(DEFAULT_SAVED_BOARD_IDS);
-          setIsInitialized(true);
-        } else {
-          // Load user's saved boards
-          const boards = await storage.getUserSavedBoards();
-          setSavedBoardIds(boards);
+          if (storage.initializeUserJobBoards) {
+            await storage.initializeUserJobBoards(DEFAULT_SAVED_BOARD_IDS);
+          }
+          return {
+            savedBoardIds: DEFAULT_SAVED_BOARD_IDS,
+            initialized: true,
+          };
         }
-      } catch (error) {
-        console.error("Failed to initialize boards:", error);
-        // Fallback to defaults on error
-        setSavedBoardIds(DEFAULT_SAVED_BOARD_IDS);
-      } finally {
-        setIsLoading(false);
-      }
-    };
 
-    initializeBoards();
-  }, [storage, storageLoading]);
+        const boards = await storage.getUserSavedBoards();
+        return {
+          savedBoardIds: boards,
+          initialized: true,
+        };
+      } catch (error) {
+        console.error("Failed to load saved boards:", error);
+        return {
+          savedBoardIds: DEFAULT_SAVED_BOARD_IDS,
+          initialized: false,
+        };
+      }
+    },
+  });
+
+  const toggleBoardSavedMutation = useMutation({
+    mutationFn: async (boardId: string) => {
+      if (!storage) {
+        throw new Error("Storage not initialized");
+      }
+      const current = savedBoardsQuery.data?.savedBoardIds ?? [];
+      const isSaved = current.includes(boardId);
+      const nextState = !isSaved;
+      await storage.saveUserBoardPreference(boardId, nextState);
+      return { boardId, saved: nextState };
+    },
+    onMutate: async (boardId: string) => {
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<SavedBoardsQueryData | undefined>(
+        queryKey
+      );
+
+      const currentIds = previous?.savedBoardIds ?? [];
+      const isSaved = currentIds.includes(boardId);
+      const updatedIds = isSaved
+        ? currentIds.filter((id) => id !== boardId)
+        : [...currentIds, boardId];
+
+      queryClient.setQueryData<SavedBoardsQueryData | undefined>(queryKey, {
+        savedBoardIds: updatedIds,
+        initialized: previous?.initialized ?? true,
+      });
+
+      return { previous };
+    },
+    onError: (error, _variables, context) => {
+      console.error("Failed to save board preference:", error);
+      if (context?.previous) {
+        queryClient.setQueryData(queryKey, context.previous);
+      }
+    },
+    onSuccess: ({ boardId, saved }) => {
+      queryClient.setQueryData<SavedBoardsQueryData | undefined>(
+        queryKey,
+        (data) => {
+          const currentIds = data?.savedBoardIds ?? [];
+          const nextIds = saved
+            ? Array.from(new Set([...currentIds, boardId]))
+            : currentIds.filter((id) => id !== boardId);
+          return {
+            savedBoardIds: nextIds,
+            initialized: data?.initialized ?? true,
+          };
+        }
+      );
+    },
+  });
+
+  const savedBoardIds = savedBoardsQuery.data?.savedBoardIds ?? DEFAULT_SAVED_BOARD_IDS;
+  const isInitialized = savedBoardsQuery.data?.initialized ?? false;
+
+  const getSavedBoards = (): JobBoardConfig[] =>
+    DEFAULT_JOB_BOARDS.filter((board) => savedBoardIds.includes(board.id));
+
+  const isBoardSaved = (boardId: string): boolean => savedBoardIds.includes(boardId);
 
   const toggleBoardSaved = async (boardId: string) => {
     if (!storage) return;
-
-    const isSaved = savedBoardIds.includes(boardId);
-    const newSaved = !isSaved;
-
-    try {
-      // Optimistically update UI
-      if (newSaved) {
-        setSavedBoardIds((prev) => [...prev, boardId]);
-      } else {
-        setSavedBoardIds((prev) => prev.filter((id) => id !== boardId));
-      }
-
-      // Persist to storage
-      await storage.saveUserBoardPreference(boardId, newSaved);
-    } catch (error) {
-      console.error("Failed to save board preference:", error);
-      // Revert on error
-      if (newSaved) {
-        setSavedBoardIds((prev) => prev.filter((id) => id !== boardId));
-      } else {
-        setSavedBoardIds((prev) => [...prev, boardId]);
-      }
-      throw error;
-    }
-  };
-
-  const getSavedBoards = (): JobBoardConfig[] => {
-    return DEFAULT_JOB_BOARDS.filter((board) =>
-      savedBoardIds.includes(board.id)
-    );
-  };
-
-  const isBoardSaved = (boardId: string): boolean => {
-    return savedBoardIds.includes(boardId);
+    await toggleBoardSavedMutation.mutateAsync(boardId);
   };
 
   return {
     allBoards: DEFAULT_JOB_BOARDS,
     savedBoardIds,
-    isLoading: isLoading || storageLoading,
+    isLoading: storageLoading || savedBoardsQuery.isLoading,
     isInitialized,
     toggleBoardSaved,
     getSavedBoards,
