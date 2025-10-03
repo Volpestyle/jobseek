@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import "source-map-support/register";
 import * as cdk from "aws-cdk-lib";
-import { AmplifyStack } from "../lib/stacks/amplify-stack";
 import { BackendStack } from "../lib/stacks/backend-stack";
 import { MonitoringStack } from "../lib/stacks/monitoring-stack";
+import { WebStack } from "../lib/stacks/web-stack";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -42,22 +42,30 @@ const envVars = {
   googleClientSecret: app.node.tryGetContext("googleClientSecret"),
   twitterClientId: app.node.tryGetContext("twitterClientId"),
   twitterClientSecret: app.node.tryGetContext("twitterClientSecret"),
-  nextAuthSecret: app.node.tryGetContext("nextAuthSecret"),
+  authSecret: app.node.tryGetContext("authSecret"),
+  anonymousJwtSecret: app.node.tryGetContext("anonymousJwtSecret"),
+  wallcrawlerApiUrl: app.node.tryGetContext("wallcrawlerApiUrl"),
+  wallcrawlerProjectId: app.node.tryGetContext("wallcrawlerProjectId"),
+  anthropicApiKey: app.node.tryGetContext("anthropicApiKey"),
+  viteAppEnv: app.node.tryGetContext("viteAppEnv"),
+  authRedirectAllowList: app.node.tryGetContext("authRedirectAllowList"),
 };
 
-const amplifyStack = new AmplifyStack(app, `JobseekAmplify-${environment}`, {
+const hasEnvVars = Object.values(envVars).some(
+  (value) => typeof value === "string" && value.length > 0
+);
+
+const webStack = new WebStack(app, `JobseekWeb-${environment}`, {
   env,
   environment,
   config,
   tags,
-  backendOutputs: {
-    userTableName: backendStack.usersTable.tableName,
-    resumeBucketName: backendStack.resumeBucket.bucketName,
-  },
-  envVars: Object.values(envVars).some((v) => v) ? envVars : undefined,
+  usersTable: backendStack.usersTable,
+  resumeBucket: backendStack.resumeBucket,
+  envVars: hasEnvVars ? envVars : undefined,
 });
 
-amplifyStack.addDependency(backendStack);
+webStack.addDependency(backendStack);
 
 if (environment === "prod" || config.enableDetailedMonitoring) {
   const monitoringStack = new MonitoringStack(
@@ -67,13 +75,15 @@ if (environment === "prod" || config.enableDetailedMonitoring) {
       env,
       environment,
       config,
-      amplifyApp: amplifyStack.amplifyApp,
       usersTable: backendStack.usersTable,
       lambdaFunctions: backendStack.lambdaFunctions,
+      webDistribution: webStack.distribution,
+      edgeLambda: webStack.edgeLambda,
+      webBucket: webStack.assetsBucket,
       tags,
     }
   );
 
   monitoringStack.addDependency(backendStack);
-  monitoringStack.addDependency(amplifyStack);
+  monitoringStack.addDependency(webStack);
 }

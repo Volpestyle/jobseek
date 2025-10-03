@@ -1,0 +1,9 @@
+{
+  "startOnLoad": false,
+  "htmlLabels": false,
+  "flowchart": {
+    "htmlLabels": false,
+    "useMaxWidth": true,
+    "curve": "basis"
+  }
+}

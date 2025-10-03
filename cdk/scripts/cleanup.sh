@@ -31,7 +31,7 @@ if [[ "$1" == "--help" || "$1" == "-h" ]]; then
     echo ""
     echo "Stack names (optional):"
     echo "  backend     Clean only backend stack"
-    echo "  amplify     Clean only amplify stack"
+    echo "  web         Clean only web stack"
     echo "  monitoring  Clean only monitoring stack"
     echo "  all         Clean all stacks (default)"
     echo ""
@@ -48,7 +48,7 @@ for arg in "$@"; do
         --force)
             FORCE=true
             ;;
-        backend|amplify|monitoring)
+        backend|web|monitoring)
             STACK_NAME=$arg
             ;;
         all)
@@ -107,21 +107,6 @@ delete_stack() {
     
     echo -e "${YELLOW}🗑️  Deleting stack $stack...${NC}"
     
-    # Special handling for Amplify stacks - need to delete the app first
-    if [[ "$stack" == *"Amplify"* ]]; then
-        echo -e "${YELLOW}Checking for Amplify app...${NC}"
-        APP_ID=$(aws amplify list-apps \
-            --query "apps[?name=='jobseek-$ENVIRONMENT'].appId" \
-            --output text 2>/dev/null || echo "")
-        
-        if [[ -n "$APP_ID" ]]; then
-            echo -e "${YELLOW}Deleting Amplify app $APP_ID...${NC}"
-            aws amplify delete-app --app-id "$APP_ID" 2>/dev/null || true
-            # Wait a bit for Amplify app deletion to propagate
-            sleep 5
-        fi
-    fi
-    
     # Delete the CloudFormation stack
     aws cloudformation delete-stack --stack-name "$stack"
     
@@ -157,8 +142,8 @@ case "$STACK_NAME" in
     "backend")
         STACKS=("JobseekBackend-$ENVIRONMENT")
         ;;
-    "amplify")
-        STACKS=("JobseekAmplify-$ENVIRONMENT")
+    "web")
+        STACKS=("JobseekWeb-$ENVIRONMENT")
         ;;
     "monitoring")
         STACKS=("JobseekMonitoring-$ENVIRONMENT")
@@ -167,7 +152,7 @@ case "$STACK_NAME" in
         # Default: all stacks (in reverse dependency order)
         STACKS=(
             "JobseekMonitoring-$ENVIRONMENT"
-            "JobseekAmplify-$ENVIRONMENT"
+            "JobseekWeb-$ENVIRONMENT"
             "JobseekBackend-$ENVIRONMENT"
         )
         ;;

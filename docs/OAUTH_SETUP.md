@@ -2,38 +2,43 @@
 
 ## Overview
 
-JobSeek uses NextAuth.js for OAuth authentication with Google and Twitter providers. User sessions are managed using secure httpOnly cookies containing JWT tokens, ensuring maximum security against XSS attacks.
+JobSeek uses Auth.js (the framework-agnostic successor to NextAuth.js) for OAuth with Google and Twitter providers. The handlers run inside the Hono server (`lib/auth/auth.server.ts`) but retain the familiar `/api/auth/*` endpoints so the React client, Auth.js callbacks, and legacy tooling continue to work.
+
+![OAuth handshake sequence](./mermaid/OAUTH_SETUP/oauth-handshake.svg)
+<!-- Mermaid source: mermaid/OAUTH_SETUP/oauth-handshake.mmd -->
 
 ## Google OAuth Setup
 
 ### Development Environment
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Create or select a project
-3. Enable Google+ API
+3. Enable "Google People API"
 4. Go to Credentials → Create Credentials → OAuth client ID
-5. Configure OAuth consent screen
+5. Configure the OAuth consent screen
 6. Add authorized redirect URIs:
    - `http://localhost:3000/api/auth/callback/google`
 
 ### Production Environment
-Add these redirect URIs to the same OAuth client or create a separate one:
-- `https://jobseek.ninja.com/api/auth/callback/google`
+Add the production redirect URI to the same OAuth client or create a dedicated one:
+- `https://<your-domain>/api/auth/callback/google`
 
 ## Twitter/X OAuth Setup
 
 ### Development Environment
 1. Go to [Twitter Developer Portal](https://developer.twitter.com/)
-2. Create a new app or select existing
-3. Go to "User authentication settings"
-4. Enable OAuth 2.0
+2. Create a new app or select an existing one
+3. Open "User authentication settings"
+4. Enable OAuth 2.0 with PKCE
 5. Add callback URLs:
    - `http://localhost:3000/api/auth/callback/twitter`
 
 ### Production Environment
-Add these callback URLs:
-- `https://jobseek.ninja.com/api/auth/callback/twitter`
+Add your production callback URI:
+- `https://<your-domain>/api/auth/callback/twitter`
 
 ## Environment Variables
+
+All secrets live in `.env.local` for development and in environment-specific files or secret stores for deployed environments.
 
 ### Development (.env.local)
 ```env
@@ -45,59 +50,58 @@ GOOGLE_CLIENT_SECRET=your-google-client-secret
 TWITTER_CLIENT_ID=your-twitter-client-id
 TWITTER_CLIENT_SECRET=your-twitter-client-secret
 
-# NextAuth
-NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=your-generated-secret # Generate with: openssl rand -base64 32
+# Auth.js session configuration
+APP_ORIGIN=http://localhost:5173
+AUTH_REDIRECT_ALLOWLIST=http://localhost:5173
+AUTH_SECRET=$(openssl rand -base64 32)
 
-# JWT Secrets (for custom auth tokens)
-AUTH_JWT_SECRET=your-auth-jwt-secret # Generate with: openssl rand -base64 32
-ANONYMOUS_JWT_SECRET=your-anon-jwt-secret # Generate with: openssl rand -base64 32
+# Anonymous JWT
+ANONYMOUS_JWT_SECRET=$(openssl rand -base64 32)
+
+# Optional: relax anonymous rate limiting during development
+# RATE_LIMIT_ANON_SESSION_MAX=500
 ```
 
 ### Production
 ```env
-# NextAuth - Update for production
-NEXTAUTH_URL=https://jobseek.ninja.com
-NEXTAUTH_SECRET=different-secret-for-production # Generate new one!
-
-# JWT Secrets - Use different ones for production!
-AUTH_JWT_SECRET=production-auth-jwt-secret
-ANONYMOUS_JWT_SECRET=production-anon-jwt-secret
-
-# Same OAuth credentials work for both environments if you add both callback URLs
+APP_ORIGIN=https://<your-client-domain>
+AUTH_REDIRECT_ALLOWLIST=https://<your-client-domain>
+AUTH_SECRET=unique-production-secret
+ANONYMOUS_JWT_SECRET=unique-production-anon-secret
+GOOGLE_CLIENT_ID=production-google-client-id
+GOOGLE_CLIENT_SECRET=production-google-client-secret
+TWITTER_CLIENT_ID=production-twitter-client-id
+TWITTER_CLIENT_SECRET=production-twitter-client-secret
 ```
 
-## Security Best Practices
+> Separate multiple domains in `AUTH_REDIRECT_ALLOWLIST` with commas (for example `https://app.example.com,https://staging.example.com`). Store these secrets in AWS Secrets Manager or Parameter Store and inject them via CDK or your deployment pipeline.
 
-1. **Never commit real credentials** - Use environment variables
-2. **Use different NextAuth secrets** for dev and production
-3. **Store production secrets** in AWS Secrets Manager or Parameter Store
-4. **Rotate secrets regularly**
-5. **Monitor OAuth usage** in provider dashboards
+## Testing the OAuth Flow
 
-## Testing OAuth Flow
-
-1. Start dev server: `pnpm dev`
-2. Navigate to `/auth/signin`
-3. Click Google or Twitter sign-in
-4. Verify redirect to provider
-5. Authorize and verify callback to `/dashboard`
-6. Check DynamoDB for user profile creation
+1. Start the Hono API server: `pnpm server:dev`
+2. Start the React client: `pnpm client:dev`
+3. Navigate to `/auth/signin`
+4. Click Google or Twitter sign-in
+5. Complete the provider flow and confirm the callback hits `/api/auth/callback/<provider>`
+6. Verify the UI redirects to `/dashboard`
+7. Inspect DynamoDB (`jobseek-users-*`) for the user profile entry
 
 ## Common Issues
 
 ### "Redirect URI mismatch"
 - Ensure callback URLs match exactly (including trailing slashes)
-- Check for http vs https
+- Check for http vs https and the correct port
 - Verify the correct environment variables are loaded
 
 ### "Invalid client"
-- Double-check client ID and secret
-- Ensure OAuth app is not in test mode (Google)
-- Verify app permissions (Twitter)
+- Double-check client ID and secret values
+- Ensure the OAuth app is in production mode (Google) or has the required scopes (Twitter)
 
-### Rate Limiting
-After implementing premium tiers, users will have different rate limits:
+## Rate Limits
+
+Most provider dashboards surface rate-limit dashboards. JobSeek also enforces internal limits (see `docs/RATE_LIMITING.md`):
 - Anonymous: 50 searches/hour, 20 applications/day
 - Authenticated: 100 searches/hour, 50 applications/day
 - Premium: 500 searches/hour, 200 applications/day
+
+Keep OAuth credentials separate per environment and rotate them regularly to minimise blast radius if a secret leaks.

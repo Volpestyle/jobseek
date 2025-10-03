@@ -1,219 +1,95 @@
-# JobSeek Architecture Design Document
+# JobSeek Architecture
 
 ## Overview
 
-JobSeek is a modern job search automation platform built on AWS serverless architecture. The system automates job discovery across multiple boards, manages user profiles and preferences, and provides a streamlined application tracking experience.
+JobSeek helps candidates discover, qualify, and track roles across multiple job boards. The platform combines a modern React 19 frontend, a lightweight Node + Hono API server, AWS-managed persistence, and the Wallcrawler automation toolkit for headless browsing and extraction.
 
-![AWS Architecture](./architecture-diagram.png)
+![AWS Architecture](./mermaid/ARCHITECTURE/architecture-overview.svg)
+<!-- Mermaid source: mermaid/ARCHITECTURE/architecture-overview.mmd -->
 
-## System Components
+The system recently finished its migration away from the legacy Next.js runtime. All customer-facing surfaces now travel through the dedicated API server and the Vite-powered client; the remaining work focuses on infrastructure hardening and incremental feature iterations.
 
-### Frontend Layer
+## Component Map
 
-#### AWS Amplify Hosting
-- **Purpose**: Hosts the Next.js application with automatic CI/CD
-- **Features**:
-  - GitHub integration for automatic deployments
-  - Environment-specific branches (dev/staging/prod)
-  - Custom domain support
-  - Server-side rendering support
+### Web Client (React 19 + TanStack Router)
+- Vite-based SPA stored in `src/`
+- Routing handled by TanStack Router with data fetching through React Query
+- UI layer reuses Shadcn primitives housed in `components/`
+- Auth + storage context lifted to `contexts/`
+- Builds to static assets that any CDN/edge can serve while proxying API calls to the Hono server
 
-#### Next.js Application
-- **Framework**: Next.js 14 with App Router
-- **UI Components**: Shadcn/ui with Tailwind CSS
-- **Authentication**: NextAuth.js with OAuth providers
-- **State Management**: React Context API
-- **API Routes**: Server-side API endpoints
+### API Server (Node + Hono)
+- Lives in `server/index.ts` and mounts the application router from `lib/server/router.ts`
+- Exposes `/api/auth/*` via Auth.js core (Google + Twitter OAuth, session JSON, sign-out) alongside anonymous auth issuance/refresh
+- Wallcrawler search orchestration, saved jobs/searches, resume uploads, and profile endpoints now run entirely inside Hono
+- Shares domain logic from `lib/` (rate limiting, DynamoDB access, Wallcrawler SDK helpers)
 
-### Backend Infrastructure
+### Auth Utilities
+- `lib/auth/auth.server.ts` wires Auth.js handlers into the Hono runtime
+- `lib/auth/auth-utils.ts` normalises request/session information for middleware and rate limiting
+- `lib/server/auth.ts` provides Hono middleware (`requireAuthenticated`, `requireAuthOrAnonymous`) that refresh anonymous cookies when needed
 
-#### Data Layer
+## Data & Storage Layer
 
-**DynamoDB Table (Single Table Design)**
-- **Table Name**: `jobseek-users-{environment}`
-- **Primary Keys**:
-  - Partition Key: `userId`
-  - Sort Key: `dataType`
-- **Access Patterns**:
-  - User profiles: `userId: USER#123, dataType: PROFILE`
-  - Saved searches: `userId: USER#123, dataType: SEARCH#456`
-  - Saved jobs: `userId: USER#123, dataType: JOB#789`
-  - Board preferences: `userId: USER#123, dataType: BOARD#abc`
-- **Global Secondary Indexes**:
-  - `DataTypeIndex`: Query by data type across users
-  - `ActiveSearchesIndex`: Find searches ready to run
-  - `BoardVisibilityIndex`: Public/private board discovery
-- **Features**:
-  - TTL enabled for rate limiting cleanup
-  - Point-in-time recovery (production)
-  - DynamoDB Streams for change data capture
+### DynamoDB (Single Table Design)
+- Table: `jobseek-users-{environment}` (set via `DYNAMODB_USERS_TABLE`)
+- Partition key: `userId`, sort key: `dataType`
+- Stores user profile, saved searches/jobs, rate limits, and anonymous refresh secrets
+- Global secondary indexes include:
+  - `DataTypeIndex` for cross-user lookups
+  - `ActiveSearchesIndex` for scheduled runs
+  - `BoardVisibilityIndex` for discoverable boards
+- TTL used for rate limiting and ephemeral auth artifacts
 
-**S3 Resume Storage**
-- **Bucket**: `jobseek-resumes-{environment}-{account}`
-- **Features**:
-  - Server-side encryption
-  - Versioning enabled
-  - Lifecycle policies (90-day transition to IA)
-  - CORS configured for direct uploads
-  - Presigned URL generation for secure access
+### S3 Resume Storage
+- Bucket: `jobseek-resumes-{environment}-{account}`
+- Accepts presigned uploads from the client via `lib/storage/s3.service.ts`
+- Versioned with lifecycle policy (transition older versions after 90 days)
+- Primary artifact store for resumes and attachments
 
-#### Compute Layer
+## Automation & Integrations
 
-**Search Scheduler Lambda**
-- **Runtime**: Node.js 18.x
-- **Trigger**: EventBridge rule (daily at 9 AM)
-- **Functionality**:
-  - Queries active searches from DynamoDB
-  - Calls Wallcrawler API for job discovery
-  - Updates search status and next run time
-  - Saves discovered jobs to DynamoDB
-- **Configuration**:
-  - 15-minute timeout
-  - 1024 MB memory
-  - X-Ray tracing enabled
+### Wallcrawler (Headless Automation)
+- `@wallcrawler/stagehand` orchestrates scripted browsing and scraping
+- `@wallcrawler/sdk` exposes REST/gRPC helpers consumed by API routes
+- Jobs run either on demand (user-triggered) or via scheduled Lambda
 
-### Integration Services
+### Scheduled Processing (EventBridge + Lambda)
+- EventBridge rule triggers the search scheduler Lambda (Node 18) on a cadence
+- Lambda queries active searches in DynamoDB, executes Wallcrawler flows, persists results, and updates status
+- Additional rules planned for notifications and cleanup
 
-#### EventBridge
-- **Purpose**: Scheduled task orchestration
-- **Rules**:
-  - Daily search execution (cron: 0 9 * * *)
-  - Future: Email notifications, cleanup tasks
+### Secrets & Configuration
+- AWS Secrets Manager stores OAuth credentials, Wallcrawler keys, and runtime secrets
+- CDK synthesises parameter stores and IAM policies per environment
 
-#### Secrets Manager
-- **Managed Secrets**:
-  - GitHub personal access token (Amplify deployments)
-  - Wallcrawler API key
-  - OAuth credentials (passed to Amplify)
-- **Access**: Services via IAM roles
+## Observability
 
-### Monitoring & Observability
+- CloudWatch dashboards monitor DynamoDB throughput, Lambda invocations, search success rate, and API latency
+- CloudWatch alarms notify on throttling, error spikes, or failed builds
+- Application logs (Hono and Lambda) aggregate in CloudWatch Logs with structured metadata for tracing user/session IDs
 
-#### CloudWatch Dashboard
-- **Metrics Tracked**:
-  - DynamoDB read/write capacity and throttles
-  - Lambda invocations, duration, and errors
-  - Amplify build success rate
-  - API Gateway response times and errors
-- **Custom Metrics**:
-  - Active user count
-  - Search execution success rate
-  - Job discovery rate
+## Authentication Architecture
 
-#### CloudWatch Alarms
-- **Critical Alerts**:
-  - Lambda function errors (threshold: 5 in 10 minutes)
-  - DynamoDB throttling (threshold: 10 events)
-  - Amplify build failures (success rate < 95%)
-  - API Gateway 5xx errors (threshold: 10 in 5 minutes)
-- **Notification**: SNS topic with email subscriptions
+- Auth.js core issues OAuth sessions; handlers reside in `lib/auth/auth.server.ts`
+- Anonymous access: JWT cookies issued by `/api/auth/anonymous` with refresh rotation stored in DynamoDB (`lib/auth/anonymous.ts`)
+- Hono middleware refreshes anonymous tokens opportunistically and enforces guards on every API route
+- The React app’s `AuthProvider` consumes `/api/auth/session` responses through `contexts/auth-context.tsx`
 
-## Data Flow Architecture
+## Deployment Model
 
-### Authentication Flow
-1. User accesses Amplify-hosted application
-2. Redirected to OAuth provider (Google/Twitter)
-3. OAuth callback to NextAuth.js handler
-4. Session created and stored in JWT
-5. User data persisted to DynamoDB
+- AWS CDK now provisions DynamoDB, S3, IAM, EventBridge, Lambda, the S3 static site bucket, CloudFront distribution, and the Lambda@Edge runtime for Hono
+- CloudFront serves the Vite SPA from S3 and forwards `/api/*` traffic to the Hono Lambda@Edge handler
+- Scheduled jobs continue to run from standard regional Lambdas (search scheduler) while interactive traffic stays at the edge
 
-### Job Search Flow
-1. User creates/updates search criteria
-2. Search saved to DynamoDB with schedule
-3. EventBridge triggers Lambda at scheduled time
-4. Lambda queries Wallcrawler API
-5. Results saved to DynamoDB
-6. User notified of new matches
+## Migration Checklist
 
-### Resume Upload Flow
-1. Client requests presigned URL from API
-2. API generates S3 presigned POST URL
-3. Client uploads directly to S3
-4. Metadata saved to DynamoDB
-5. S3 lifecycle manages old versions
+- [x] Port auth/session endpoints from `app/api/auth/**` to Hono, including Auth.js replacement
+- [x] Port Wallcrawler search/session routes to Hono
+- [x] Port resume upload + job management endpoints
+- [x] Replace `middleware.ts` with Hono equivalents (rate limit + auth guards)
+- [x] Update React client hooks to consume the new API responses
+- [x] Align infrastructure/CDK to deploy the Hono server + Vite bundle
+- [ ] Retire remaining legacy Amplify deployment once the new pipeline ships
 
-## Security Architecture
-
-### Authentication & Authorization
-- **OAuth 2.0**: Google and Twitter integration
-- **JWT Tokens**: Stateless session management
-- **API Protection**: All routes require authentication
-- **Rate Limiting**: DynamoDB-based per-user limits
-
-### Data Protection
-- **Encryption at Rest**:
-  - DynamoDB: AWS-managed encryption
-  - S3: Server-side encryption (SSE-S3)
-  - Secrets Manager: Automatic encryption
-- **Encryption in Transit**: HTTPS enforced everywhere
-- **Network Security**: Private VPC endpoints where applicable
-
-### Access Control
-- **IAM Roles**: Least privilege principle
-  - Amplify service role
-  - CloudFormation deployment role
-- **Resource Policies**: S3 bucket policies restrict access
-- **API Security**: Server-side validation and sanitization
-
-## Technology Stack
-
-### Frontend
-- **Framework**: Next.js 14.x
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS + Shadcn/ui
-- **Authentication**: NextAuth.js
-- **API Client**: Native fetch with custom hooks
-
-### Backend
-- **Infrastructure**: AWS CDK v2
-- **Database**: DynamoDB
-- **File Storage**: S3
-- **Secrets**: AWS Secrets Manager
-
-### DevOps
-- **CI/CD**: AWS Amplify + GitHub Actions
-- **IaC**: AWS CDK (TypeScript)
-- **Monitoring**: CloudWatch
-- **Package Manager**: pnpm (monorepo)
-
-## Scalability Considerations
-
-### Current Capacity
-- **DynamoDB**: On-demand billing (auto-scaling)
-- **S3**: Unlimited storage capacity
-- **Amplify**: Auto-scaling based on traffic
-
-### Growth Strategy
-1. **Database Sharding**: Partition by user ID if needed
-2. **Caching Layer**: Add ElastiCache for hot data
-3. **Async Processing**: Lambda + SQS for job processing pipeline
-4. **CDN**: CloudFront for static assets
-5. **Search Optimization**: OpenSearch for advanced queries
-
-## Disaster Recovery
-
-### Backup Strategy
-- **DynamoDB**: Point-in-time recovery (35 days)
-- **S3**: Versioning + cross-region replication
-- **Code**: GitHub repository (version controlled)
-- **Secrets**: Manual backup recommended
-
-### Recovery Procedures
-1. **Data Loss**: Restore from DynamoDB PITR
-2. **Region Failure**: Deploy to alternate region
-3. **Corruption**: Rollback to previous deployment
-4. **Security Breach**: Rotate all secrets immediately
-
-## Cost Optimization
-
-### Current Optimizations
-- **On-Demand Pricing**: Pay-per-use for all services
-- **S3 Lifecycle**: Transition old data to IA storage
-- **Lambda Right-Sizing**: Optimized memory allocation
-- **Development Environments**: Auto-cleanup policies
-
-### Future Optimizations
-1. **Reserved Capacity**: For predictable workloads
-2. **Spot Instances**: For batch processing
-3. **Data Archival**: Glacier for long-term storage
-4. **Cost Allocation Tags**: Detailed cost tracking
+Refer to `docs/DEPLOYMENT_GUIDE.md` for environment setup and to `docs/AUTH_ARCHITECTURE.md` for deeper detail on the auth flow.

@@ -2,6 +2,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as dotenv from "dotenv";
+import { z } from "zod";
 import {
   SecretsManagerClient,
   CreateSecretCommand,
@@ -9,26 +10,36 @@ import {
   DescribeSecretCommand,
 } from "@aws-sdk/client-secrets-manager";
 
-interface DeployConfig {
-  // Secrets Manager secrets
-  GITHUB_TOKEN: string;
-  WALLCRAWLER_API_KEY?: string;
+const deployConfigSchema = z
+  .object({
+    // Secrets Manager secrets
+    GITHUB_TOKEN: z.string().optional(),
+    WALLCRAWLER_API_KEY: z.string().optional(),
 
-  // Amplify environment variables
-  GOOGLE_CLIENT_ID: string;
-  GOOGLE_CLIENT_SECRET: string;
-  TWITTER_CLIENT_ID?: string;
-  TWITTER_CLIENT_SECRET?: string;
-  NEXTAUTH_SECRET: string;
+    // Application environment variables
+    GOOGLE_CLIENT_ID: z.string().min(1, "GOOGLE_CLIENT_ID is required"),
+    GOOGLE_CLIENT_SECRET: z.string().min(1, "GOOGLE_CLIENT_SECRET is required"),
+    TWITTER_CLIENT_ID: z.string().optional(),
+    TWITTER_CLIENT_SECRET: z.string().optional(),
+    AUTH_SECRET: z.string().min(1, "AUTH_SECRET is required"),
+    ANONYMOUS_JWT_SECRET: z.string().min(1, "ANONYMOUS_JWT_SECRET is required"),
+    WALLCRAWLER_API_URL: z.string().optional(),
+    WALLCRAWLER_PROJECT_ID: z.string().optional(),
+    ANTHROPIC_API_KEY: z.string().optional(),
+    VITE_APP_ENV: z.string().optional(),
+    AUTH_REDIRECT_ALLOWLIST: z.string().optional(),
 
-  // AWS Configuration
-  AWS_REGION?: string;
-  AWS_PROFILE?: string;
+    // AWS Configuration
+    AWS_REGION: z.string().optional(),
+    AWS_PROFILE: z.string().optional(),
 
-  // DynamoDB and S3 (from backend stack outputs)
-  DYNAMODB_USERS_TABLE?: string;
-  S3_RESUME_BUCKET?: string;
-}
+    // DynamoDB and S3 (from backend stack outputs)
+    DYNAMODB_USERS_TABLE: z.string().optional(),
+    S3_RESUME_BUCKET: z.string().optional(),
+  })
+  .passthrough();
+
+type DeployConfig = z.infer<typeof deployConfigSchema>;
 
 async function createOrUpdateSecret(
   client: SecretsManagerClient,
@@ -80,33 +91,39 @@ async function main() {
   console.log(`🚀 Deploying secrets for environment: ${environment}`);
   console.log(`📄 Reading from: ${envFile}`);
 
-  // Load environment file
-  const envPath = path.resolve(process.cwd(), envFile);
+  // Load environment file - check both current dir and parent dir
+  let envPath = path.resolve(process.cwd(), envFile);
   if (!fs.existsSync(envPath)) {
-    console.error(`❌ Environment file not found: ${envPath}`);
-    console.log("\nCreate a file based on .env.example:");
-    console.log(`cp .env.example ${envFile}`);
+    // Try parent directory (for when running from cdk folder)
+    envPath = path.resolve(process.cwd(), "..", envFile);
+    if (!fs.existsSync(envPath)) {
+      console.error(`❌ Environment file not found: ${envFile}`);
+      console.error(`  Checked: ${path.resolve(process.cwd(), envFile)}`);
+      console.error(`  Checked: ${path.resolve(process.cwd(), "..", envFile)}`);
+      console.log("\nFetch the environment file from Secrets Manager:");
+      console.log(
+        `aws secretsmanager get-secret-value --secret-id jobseek/env-file-${environment} --query SecretString --output text > ${envFile}`
+      );
+      console.log("\nOr create a file based on .env.example:");
+      console.log(`cp .env.example ${envFile}`);
+      process.exit(1);
+    }
+  }
+
+  const envFileContents = fs.readFileSync(envPath, "utf8");
+  const envConfig = dotenv.parse(envFileContents);
+  const parsedConfig = deployConfigSchema.safeParse(envConfig);
+
+  if (!parsedConfig.success) {
+    console.error("❌ Invalid environment configuration:");
+    for (const issue of parsedConfig.error.errors) {
+      const pathLabel = issue.path.length > 0 ? issue.path.join(".") : "<root>";
+      console.error(`  - ${pathLabel}: ${issue.message}`);
+    }
     process.exit(1);
   }
 
-  const envConfig = dotenv.parse(fs.readFileSync(envPath));
-  const config = envConfig as unknown as DeployConfig;
-
-  // Validate required fields
-  const required = [
-    "GITHUB_TOKEN",
-    "GOOGLE_CLIENT_ID",
-    "GOOGLE_CLIENT_SECRET",
-    "NEXTAUTH_SECRET",
-  ];
-  const missing = required.filter((key) => !config[key as keyof DeployConfig]);
-
-  if (missing.length > 0) {
-    console.error(
-      `❌ Missing required environment variables: ${missing.join(", ")}`
-    );
-    process.exit(1);
-  }
+  const config: DeployConfig = parsedConfig.data;
 
   // Configure AWS client
   const region = config.AWS_REGION || process.env.AWS_REGION || "us-east-1";
@@ -123,12 +140,22 @@ async function main() {
     // Deploy to Secrets Manager
     console.log("\n📦 Deploying to AWS Secrets Manager...");
 
-    // GitHub token
+    const envFileSecretName = `jobseek/env-file-${environment}`;
     await createOrUpdateSecret(
       client,
-      `jobseek/github-token`,
-      JSON.stringify({ token: config.GITHUB_TOKEN })
+      envFileSecretName,
+      envFileContents
     );
+    console.log(`✅ Stored environment file: ${envFileSecretName}`);
+
+    // GitHub token (if provided)
+    if (config.GITHUB_TOKEN) {
+      await createOrUpdateSecret(
+        client,
+        `jobseek/github-token`,
+        JSON.stringify({ token: config.GITHUB_TOKEN })
+      );
+    }
 
     // Wallcrawler API key (if provided)
     if (config.WALLCRAWLER_API_KEY) {
@@ -139,23 +166,35 @@ async function main() {
       );
     }
 
-    // Generate CDK context for Amplify environment variables
-    const amplifyEnvVars = {
+    // Generate CDK context for web stack environment variables
+    const appEnvVars = {
       googleClientId: config.GOOGLE_CLIENT_ID,
       googleClientSecret: config.GOOGLE_CLIENT_SECRET,
       twitterClientId: config.TWITTER_CLIENT_ID || "",
       twitterClientSecret: config.TWITTER_CLIENT_SECRET || "",
-      nextAuthSecret: config.NEXTAUTH_SECRET,
+      authSecret: config.AUTH_SECRET,
+      anonymousJwtSecret: config.ANONYMOUS_JWT_SECRET,
+      wallcrawlerApiUrl: config.WALLCRAWLER_API_URL || "",
+      wallcrawlerProjectId: config.WALLCRAWLER_PROJECT_ID || "",
+      anthropicApiKey: config.ANTHROPIC_API_KEY || "",
+      viteAppEnv: config.VITE_APP_ENV || environment,
+      authRedirectAllowList: config.AUTH_REDIRECT_ALLOWLIST || "",
     };
 
     console.log("\n📝 CDK deployment command:");
     console.log(`cdk deploy --all \\
-  --context environment=${environment} \\
-  --context googleClientId="${amplifyEnvVars.googleClientId}" \\
-  --context googleClientSecret="${amplifyEnvVars.googleClientSecret}" \\
-  --context twitterClientId="${amplifyEnvVars.twitterClientId}" \\
-  --context twitterClientSecret="${amplifyEnvVars.twitterClientSecret}" \\
-  --context nextAuthSecret="${amplifyEnvVars.nextAuthSecret}"`);
+      --context environment=${environment} \\
+      --context googleClientId="${appEnvVars.googleClientId}" \\
+      --context googleClientSecret="${appEnvVars.googleClientSecret}" \\
+      --context twitterClientId="${appEnvVars.twitterClientId}" \\
+      --context twitterClientSecret="${appEnvVars.twitterClientSecret}" \\
+      --context authSecret="${appEnvVars.authSecret}" \\
+      --context anonymousJwtSecret="${appEnvVars.anonymousJwtSecret}" \\
+      --context wallcrawlerApiUrl="${appEnvVars.wallcrawlerApiUrl}" \\
+      --context wallcrawlerProjectId="${appEnvVars.wallcrawlerProjectId}" \\
+      --context anthropicApiKey="${appEnvVars.anthropicApiKey}" \\
+      --context viteAppEnv="${appEnvVars.viteAppEnv}" \\
+      --context authRedirectAllowList="${appEnvVars.authRedirectAllowList}"`);
 
     // Save context to file for easier deployment
     const contextFile = `cdk.context.${environment}.json`;
@@ -164,7 +203,7 @@ async function main() {
       JSON.stringify(
         {
           environment,
-          ...amplifyEnvVars,
+          ...appEnvVars,
         },
         null,
         2

@@ -120,31 +120,26 @@ The backend deployment script will:
 4. Deploy the Backend stack only
 5. Display infrastructure details (table names, bucket names)
 
-### Deploy Next.js Application Only
+### Deploy Web Stack Only
 
-Deploy only the Next.js application via AWS Amplify:
+Deploy only the CloudFront + Lambda@Edge web surface:
 
 ```bash
 # From root directory
-pnpm deploy:nextjs:dev      # Deploy to development
-pnpm deploy:nextjs:staging  # Deploy to staging
-pnpm deploy:nextjs:prod     # Deploy to production
+pnpm --filter @jobseek/cdk cdk:dev      # Deploy dev web + backend
 
-# Or from cdk directory
+# Or run the deploy helper (runs build + secrets + deploy)
 cd cdk
-./deploy-nextjs.sh dev
-./deploy-nextjs.sh staging
-./deploy-nextjs.sh prod
-
-# With options
-./deploy-nextjs.sh dev --auto-approve  # Auto-approve CDK changes (dev only)
+./scripts/deploy.sh dev --skip-secrets  # deploy after secrets seeded
+./scripts/deploy.sh staging
+./scripts/deploy.sh prod
 ```
 
-The Next.js deployment script will:
-1. Check prerequisites
-2. Verify backend infrastructure exists (with option to continue if missing)
-3. Deploy the Amplify stack only
-4. Display the app URL and next steps
+The deployment script will:
+1. Build the Vite client (`pnpm build:deploy`)
+2. Push secrets to AWS Secrets Manager (unless skipped)
+3. Deploy backend + web stacks with CDK (DynamoDB, Lambda scheduler, S3, CloudFront, Lambda@Edge)
+4. Print the CloudFront domain and verification steps
 
 ### Deploy Everything (Full Deployment)
 
@@ -229,7 +224,7 @@ cdk deploy --all \
   --context googleClientSecret="your-google-client-secret" \
   --context twitterClientId="your-twitter-client-id" \
   --context twitterClientSecret="your-twitter-client-secret" \
-  --context nextAuthSecret="your-nextauth-secret"
+  --context authSecret="your-auth-secret"
 ```
 
 **Option B: Using Context File (Recommended for Manual Deployment)**
@@ -376,7 +371,7 @@ aws amplify get-branch \
 
 1. **Access Amplify URL**: Check AWS Amplify console for deployed URL
 2. **Test Authentication**: Verify Google/Twitter OAuth login works
-3. **Verify Environment Variables**: Check browser console for NEXT_PUBLIC_APP_ENV
+3. **Verify Environment Variables**: Check browser console for VITE_APP_ENV
 4. **Test API Endpoints**: Verify CRUD operations work
 5. **Check Scheduler**: Monitor CloudWatch logs for job execution
 
@@ -393,7 +388,7 @@ chmod +x deploy-secrets.ts
 ### Issue 2: Missing Environment Variables
 
 ```bash
-# Error: Missing required environment variables: GOOGLE_CLIENT_ID, NEXTAUTH_SECRET
+# Error: Missing required environment variables: GOOGLE_CLIENT_ID, AUTH_SECRET
 # Solution: Ensure all required fields in .env.deploy.<environment> are filled
 ```
 
@@ -409,7 +404,7 @@ cdk bootstrap --trust=ACCOUNT-NUMBER
 ### Issue 4: Amplify Build Failed - Missing Env Vars
 
 ```bash
-# Error: "NEXTAUTH_SECRET is not defined"
+# Error: "AUTH_SECRET is not defined"
 # Solution: Either redeploy with context variables or manually add in Amplify console
 ```
 
@@ -577,7 +572,7 @@ pnpm verify:prod                 # Verify prod deployment
 # Cleanup failed deployments
 pnpm cleanup:dev                 # Clean failed dev stacks (interactive)
 pnpm cleanup:dev:force           # Force clean without prompts
-pnpm cleanup:dev:amplify         # Clean only Amplify stack
+pnpm cleanup:dev:web             # Clean only web stack
 pnpm cleanup:staging             # Clean failed staging stacks
 pnpm cleanup:prod                # Clean prod stacks (requires confirmation)
 

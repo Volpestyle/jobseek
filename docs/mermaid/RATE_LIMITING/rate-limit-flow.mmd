@@ -1,0 +1,20 @@
+flowchart TD
+  subgraph Client
+    Request["API Request\n(e.g. /api/wallcrawler/search/start)"]
+  end
+
+  subgraph Hono["Hono Route"]
+    Middleware["requireAuthOrAnonymous\n+ check<Search|Session|Apply>RateLimit"]
+    Handler["Business Logic\n(lib/server/router.ts)"]
+  end
+
+  RateLimiter["checkRateLimit\n(lib/auth/rate-limiter.ts)"]
+  DynamoDB[("DynamoDB\njobseek-users-*")]
+
+  Request --> Middleware
+  Middleware --> RateLimiter
+  RateLimiter --> DynamoDB
+  DynamoDB --> RateLimiter
+  RateLimiter -->|"allowed"| Handler
+  RateLimiter -->|"429 + Retry-After"| Middleware
+  Handler -->|"JSON response"| Request

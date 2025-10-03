@@ -2,15 +2,18 @@
 
 ## Overview
 
-JobSeek uses a persistent, tier-based rate limiting system built on DynamoDB. Rate limits are applied per user/session and vary based on subscription tier.
+JobSeek uses a persistent, tier-based rate limiting system built on DynamoDB. Limits are enforced per user/session for the primary Wallcrawler flows (search, session creation, job application) and the anonymous auth endpoints.
+
+![Rate limiting flow](./mermaid/RATE_LIMITING/rate-limit-flow.svg)
+<!-- Mermaid source: mermaid/RATE_LIMITING/rate-limit-flow.mmd -->
 
 ## How It Works
 
-### 1. Time Window Calculation
+### Time Window Calculation
 
-Rate limits use fixed time windows that align to boundaries:
+Rate limits use fixed windows that align to deterministic boundaries:
 
-- **Hourly limits**: Align to the start of each hour (e.g., 2:00 PM, 3:00 PM)
+- **Hourly limits**: Align to the start of each hour (e.g., 14:00, 15:00)
 - **Daily limits**: Align to midnight UTC
 
 ```typescript
@@ -18,43 +21,42 @@ const windowStart = Math.floor(now / config.windowMs) * config.windowMs;
 const resetTime = windowStart + config.windowMs;
 ```
 
-### 2. Storage Structure
+### Storage Structure
 
-Rate limits are stored in the main `jobseek-users` DynamoDB table using composite keys:
+Rate limits are stored in the `DYNAMODB_USERS_TABLE` DynamoDB table using composite keys:
 
-| userId              | dataType                   | count | resetTime     | ttl        |
-| ------------------- | -------------------------- | ----- | ------------- | ---------- |
-| `search:user:123`   | `RATE_LIMIT#1704067200000` | 45    | 1704070800000 | 1704074400 |
-| `apply:anon:abc123` | `RATE_LIMIT#1704067200000` | 12    | 1704153600000 | 1704157200 |
+| userId                | dataType                   | count | resetTime     | ttl        |
+| --------------------- | -------------------------- | ----- | ------------- | ---------- |
+| `search:user:123`     | `RATE_LIMIT#1704067200000` | 45    | 1704070800000 | 1704074400 |
+| `apply:anon:anon_abc` | `RATE_LIMIT#1704067200000` | 12    | 1704153600000 | 1704157200 |
 
-- **userId**: Identifier format: `{limitType}:{userType}:{id}`
-- **dataType**: Always `RATE_LIMIT#{windowStart}`
-- **count**: Number of requests in current window
-- **resetTime**: When this window expires (milliseconds)
+- **userId**: `{limitType}:{scope}:{id}` where `scope` is `user`, `anon`, or a custom bucket
+- **dataType**: `RATE_LIMIT#{windowStart}`
+- **count**: Number of requests in the current window
+- **resetTime**: Millisecond timestamp when the window expires
 - **ttl**: DynamoDB TTL for automatic cleanup (seconds)
 
-### 3. User Identification
+### User Identification
 
 #### Anonymous Users
 
-- Identified by a hash of: IP address + User-Agent + Accept-Language
-- Format: `session:anon:{hash}`, `search:anon:{hash}`, etc.
+- Identified by anonymous token ID (e.g., `anon_<tokenId>`)
+- `checkAnonymousTokenIssueRateLimit` falls back to the caller IP when no token is present
 
 #### Authenticated Users
 
-- Identified by their user ID from NextAuth session
+- Identified by Auth.js session user ID (`session.user.id`)
 - Format: `session:user:{userId}`, `search:user:{userId}`, etc.
 
 #### Premium Users
 
-- Same as authenticated but with higher limits
-- Premium status checked via `subscriptionTier` and `subscriptionExpiry` fields
+- Share the authenticated format but switch to the `premium` tier when `subscriptionTier === "premium"` and the subscription is active (`subscriptionExpiry > Date.now()`)
 
 ## Rate Limit Tiers
 
 ### Anonymous Users
 
-- **Sessions**: 5 per hour
+- **Sessions**: 30 per hour (defaults; configurable via `RATE_LIMIT_ANON_SESSION_MAX`)
 - **Searches**: 50 per hour
 - **Applications**: 20 per day
 
@@ -70,14 +72,16 @@ Rate limits are stored in the main `jobseek-users` DynamoDB table using composit
 - **Searches**: 500 per hour
 - **Applications**: 200 per day
 
+> **Configuration overrides:** All anonymous session/refresh limits can be tuned with `RATE_LIMIT_ANON_SESSION_MAX`, `RATE_LIMIT_ANON_SESSION_WINDOW_MS`, `RATE_LIMIT_ANON_REFRESH_MAX`, and `RATE_LIMIT_ANON_REFRESH_WINDOW_MS`. Defaults are generous in non-production environments to avoid blocking manual testing while keeping production focused on spam prevention.
+
 ## Implementation Details
 
-### 1. Atomic Operations
+### Atomic Operations
 
-The system uses DynamoDB conditional updates to handle concurrent requests:
+The system uses DynamoDB conditional writes:
 
 ```typescript
-// First request creates entry
+// First request creates the entry
 ConditionExpression: "attribute_not_exists(userId) AND attribute_not_exists(dataType)";
 
 // Subsequent requests increment atomically
@@ -85,121 +89,103 @@ UpdateExpression: "SET #count = #count + :inc";
 ConditionExpression: "#count < :max";
 ```
 
-### 2. Race Condition Handling
+### Race Condition Handling
 
-If two requests try to create the same rate limit entry:
+If two requests create the same entry, the second receives `ConditionalCheckFailedException` and the helper retries automatically.
 
-- First request succeeds
-- Second request gets `ConditionalCheckFailedException`
-- System retries the operation
+### TTL Cleanup
 
-### 3. TTL Cleanup
-
-Entries have a TTL set to 1 hour after the window expires:
+Entries set a TTL one hour beyond the reset time:
 
 ```typescript
 ttl: Math.floor(resetTime / 1000) + 3600;
 ```
 
-This ensures old rate limit data is automatically cleaned up.
+This keeps the table lean while preserving short-term audit data.
 
 ## API Integration
 
-### Example: Wallcrawler Session Creation
+### Example: Wallcrawler Search Start (Hono)
 
 ```typescript
-// In /api/wallcrawler/session
-import { checkSessionRateLimit } from "@/lib/auth/rate-limiter";
+import { checkSearchRateLimit } from "@/lib/auth/rate-limiter";
+import { requireAuthOrAnonymous } from "@/lib/server/auth";
 
-export async function POST(request: NextRequest) {
-  const rateLimitResult = await checkSessionRateLimit(request);
+api.post("/wallcrawler/search/start", requireAuthOrAnonymous(), async (c) => {
+  const rateLimit = await checkSearchRateLimit(c.req.raw);
 
-  if (!rateLimitResult.allowed) {
-    return NextResponse.json(
-      {
-        error: "Rate limit exceeded",
-        limit: rateLimitResult.limit,
-        remaining: rateLimitResult.remaining,
-        resetTime: new Date(rateLimitResult.resetTime).toISOString(),
-      },
-      { status: 429 }
-    );
+  if (!rateLimit.allowed) {
+    const retryAfter = Math.max(0, Math.ceil((rateLimit.resetTime - Date.now()) / 1000));
+    c.header("Retry-After", retryAfter.toString());
+    return c.json({ error: "Rate limit exceeded" }, 429);
   }
 
-  // Continue with session creation...
-}
+  // Continue with search orchestration…
+});
 ```
 
-### Response Headers
+### Response Contract
 
-When rate limited, the API returns:
+When throttled, the helpers return:
 
-- Status: `429 Too Many Requests`
-- Body includes: limit, remaining requests, and reset time
+- `allowed`: `false`
+- `limit`: maximum requests for the window
+- `remaining`: `0`
+- `resetTime`: epoch milliseconds of the next window
+
+Use these values to populate response headers (`Retry-After`) and JSON payloads.
 
 ## Premium Subscription Check
 
-The system validates premium status on each request:
+Premium upgrades are validated on every request:
 
 ```typescript
-async function isPremiumUser(userId: string): Promise<boolean> {
+async function isPremiumUser(userId: string | null): Promise<boolean> {
+  if (!userId) return false;
   const profile = await dynamodbService.getUserProfile(userId);
 
-  if (profile?.subscriptionTier === "premium" && profile.subscriptionExpiry) {
-    const expiryDate = new Date(profile.subscriptionExpiry);
-    return expiryDate > new Date(); // Must not be expired
-  }
-
-  return false;
+  return (
+    profile?.subscriptionTier === "premium" &&
+    !!profile.subscriptionExpiry &&
+    new Date(profile.subscriptionExpiry) > new Date()
+  );
 }
 ```
 
 ## Error Handling
 
-If rate limit checks fail (e.g., DynamoDB error):
-
-- System logs the error
-- Request is **allowed** to prevent blocking users
-- This ensures availability over strict enforcement
+If DynamoDB calls fail, the helper logs the error and returns `allowed: false` with the configured limit. Callers should treat this the same as hitting the limit to avoid bursts when the data plane is unhealthy.
 
 ## Testing Rate Limits
 
-### 1. Test Anonymous Limits
+### Anonymous Sessions
 
 ```bash
-# Make 6 session requests (limit is 5/hour)
 for i in {1..6}; do
-  curl -X POST http://localhost:3000/api/wallcrawler/session
+  curl -X GET --include http://localhost:3000/api/auth/anonymous
 done
-# 6th request should return 429
+# The 6th request returns 429
 ```
 
-### 2. Test Authenticated Limits
+### Authenticated Search Limit
+
+1. Sign in through the UI so cookies are set.
+2. Run the following (the endpoint returns 429 on the 101st attempt):
 
 ```bash
-# Sign in first, then test with session cookie
-# Make 11 session requests (limit is 10/hour)
+for i in {1..101}; do
+  curl -X POST --cookie "$(pbpaste)" \
+    -H 'Content-Type: application/json' \
+    -d '{"keywords":"react","boards":["indeed"],"location":"remote"}' \
+    http://localhost:3000/api/wallcrawler/search/start
+done
 ```
 
-### 3. Test Premium User
+Replace `$(pbpaste)` with session cookies exported from your browser.
 
-1. Update user in DynamoDB:
-   - Set `subscriptionTier: "premium"`
-   - Set `subscriptionExpiry: "2025-12-31T23:59:59Z"`
-2. Test higher limits (50 sessions/hour)
+### Premium Verification
 
-## Monitoring
+1. Update the user profile in DynamoDB (`subscriptionTier = "premium"`, `subscriptionExpiry` in the future).
+2. Repeat the search loop above and observe the higher thresholds before 429s appear.
 
-Watch for these patterns in logs:
-
-- Frequent "Rate limit exceeded" errors
-- "Rate limit check failed" errors (DynamoDB issues)
-- Users hitting limits consistently (may need tier upgrade)
-
-## Future Enhancements
-
-1. **Redis Cache**: Add Redis layer for faster lookups
-2. **Sliding Windows**: Implement sliding windows instead of fixed
-3. **Burst Allowance**: Allow short bursts over limit
-4. **IP-based Limits**: Additional layer for DDoS protection
-5. **Custom Tiers**: Support more granular subscription tiers
+Rate limits are defined in `lib/auth/rate-limiter.ts`. Update both documentation and code together whenever tiers or identifiers change.

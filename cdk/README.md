@@ -21,19 +21,6 @@ npm install
 
 Before deploying, you need to create the following secrets in AWS Secrets Manager:
 
-#### GitHub Token (for Amplify)
-```bash
-aws secretsmanager create-secret \
-  --name jobseek/github-token \
-  --description "GitHub personal access token for Amplify" \
-  --secret-string "your-github-token-here"
-```
-
-To create a GitHub token:
-1. Go to GitHub Settings > Developer settings > Personal access tokens
-2. Generate a new token with `repo` scope
-3. Copy the token and use it in the command above
-
 #### WallCrawler API Key
 ```bash
 aws secretsmanager create-secret \
@@ -42,16 +29,11 @@ aws secretsmanager create-secret \
   --secret-string "your-wallcrawler-api-key"
 ```
 
-#### NextAuth Secret
-Add this to your Amplify environment variables in the AWS Console after deployment:
-- Key: `NEXTAUTH_SECRET`
-- Value: Generate using `openssl rand -base64 32`
-
 ### 3. Update Configuration
 
 Edit the config files in `cdk/config/` to match your setup:
-- Update the GitHub repository URL in `amplify-stack.ts`
-- Update domain names if you have custom domains
+- Provide the correct `wallcrawlerApiKeySecretName`
+- Set custom domains and monitoring preferences if applicable
 
 ## Deployment
 
@@ -77,14 +59,21 @@ npm run diff
 
 ## Environment Variables
 
-The following environment variables need to be configured for your Next.js app:
+Populate `.env.<env>` files at the repository root. The deploy script reads them and pushes values to Secrets Manager + Lambda:
 
 - `GOOGLE_CLIENT_ID`: Google OAuth Client ID
-- `GOOGLE_CLIENT_SECRET`: Google OAuth Client Secret  
-- `TWITTER_CLIENT_ID`: Twitter/X OAuth Client ID
-- `TWITTER_CLIENT_SECRET`: Twitter/X OAuth Client Secret
-- `NEXTAUTH_URL`: The app URL (configured per environment)
-- `NEXTAUTH_SECRET`: NextAuth encryption secret (add manually in Amplify console)
+- `GOOGLE_CLIENT_SECRET`: Google OAuth Client Secret
+- `TWITTER_CLIENT_ID`: Twitter/X OAuth Client ID (optional)
+- `TWITTER_CLIENT_SECRET`: Twitter/X OAuth Client Secret (optional)
+- `AUTH_SECRET`: Auth.js encryption secret (generate with `openssl rand -base64 32`)
+- `ANONYMOUS_JWT_SECRET`: Secret for anonymous session issuance/refresh
+- `WALLCRAWLER_API_URL`: Base URL for Wallcrawler
+- `WALLCRAWLER_PROJECT_ID`: Wallcrawler project identifier
+- `ANTHROPIC_API_KEY`: Key for AI-assisted summarisation (optional)
+- `AUTH_REDIRECT_ALLOWLIST`: Comma-delimited list of allowed callback origins (e.g. CloudFront + custom domains)
+- `VITE_APP_ENV`: Environment label surfaced to the client (`dev`, `staging`, etc.)
+
+After editing `.env.<env>` at the repo root, run `pnpm secrets:<env>` (shorthand for `pnpm --filter @jobseek/cdk secrets:<env>`) to sync values into AWS Secrets Manager. The script also stores the raw env file in `jobseek/env-file-<env>` so CI/CD can recreate `.env.<env>` automatically.
 
 ## Stack Architecture
 
@@ -98,10 +87,11 @@ The following environment variables need to be configured for your Next.js app:
 - **S3 Bucket**: Resume storage
 - **Lambda Functions**: Scheduled job searches
 
-### 2. Amplify Stack
-- **Amplify App**: Hosts the Next.js application
-- **Branch Deployments**: Automatic deployments from Git branches
-- **Custom Domain**: Optional custom domain configuration
+### 2. Web Stack
+- **S3 Bucket (Static Assets)**: Stores the built Vite client
+- **CloudFront Distribution**: Serves static assets globally and routes `/api/*` to Lambda@Edge
+- **Lambda@Edge (Hono)**: Runs the API in us-east-1 with access to DynamoDB and S3
+- **Bucket Deployment**: Pushes the `dist/` directory to S3 and invalidates CloudFront
 
 ### 3. Monitoring Stack (Production only)
 - **CloudWatch Dashboard**: System overview and metrics
@@ -123,12 +113,6 @@ The following environment variables need to be configured for your Next.js app:
 - `cdk docs`: Open CDK documentation
 
 ## Troubleshooting
-
-### Amplify Build Failures
-Check the Amplify console for build logs. Common issues:
-- Missing environment variables
-- Node version mismatch
-- Build command errors
 
 ### DynamoDB Throttling
 If you see throttling errors:

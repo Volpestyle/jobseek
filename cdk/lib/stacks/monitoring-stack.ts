@@ -6,14 +6,17 @@ import * as snsSubscriptions from "aws-cdk-lib/aws-sns-subscriptions";
 import * as cloudwatchActions from "aws-cdk-lib/aws-cloudwatch-actions";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as lambda from "aws-cdk-lib/aws-lambda";
-import * as amplify from "aws-cdk-lib/aws-amplify";
+import * as s3 from "aws-cdk-lib/aws-s3";
+import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
 
 export interface MonitoringStackProps extends cdk.StackProps {
   environment: string;
   config: any;
-  amplifyApp: amplify.CfnApp;
   usersTable: dynamodb.Table;
   lambdaFunctions: Record<string, lambda.Function>;
+  webDistribution?: cloudfront.IDistribution;
+  edgeLambda?: lambda.IFunction;
+  webBucket?: s3.IBucket;
 }
 
 export class MonitoringStack extends cdk.Stack {
@@ -158,42 +161,6 @@ export class MonitoringStack extends cdk.Stack {
       );
     });
 
-    const amplifyBuildSuccessRate = new cloudwatch.MathExpression({
-      expression: "100 * (m1 / (m1 + m2))",
-      usingMetrics: {
-        m1: new cloudwatch.Metric({
-          namespace: "AWS/Amplify",
-          metricName: "Builds",
-          dimensionsMap: {
-            App: props.amplifyApp.ref,
-            Result: "SUCCEED",
-          },
-          statistic: "Sum",
-        }),
-        m2: new cloudwatch.Metric({
-          namespace: "AWS/Amplify",
-          metricName: "Builds",
-          dimensionsMap: {
-            App: props.amplifyApp.ref,
-            Result: "FAILED",
-          },
-          statistic: "Sum",
-        }),
-      },
-      label: "Build Success Rate",
-      period: cdk.Duration.hours(1),
-    });
-
-    new cloudwatch.Alarm(this, "AmplifyBuildFailureAlarm", {
-      metric: amplifyBuildSuccessRate,
-      threshold: 95,
-      comparisonOperator: cloudwatch.ComparisonOperator.LESS_THAN_THRESHOLD,
-      evaluationPeriods: 2,
-      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
-      alarmDescription: "Amplify build success rate is below 95%",
-      actionsEnabled: props.environment === "prod",
-    }).addAlarmAction(new cloudwatchActions.SnsAction(alarmTopic));
-
     dashboard.addWidgets(
       new cloudwatch.TextWidget({
         markdown: `# Jobseek Dashboard (${props.environment})`,
@@ -202,98 +169,137 @@ export class MonitoringStack extends cdk.Stack {
       })
     );
 
-    dashboard.addWidgets(
-      new cloudwatch.SingleValueWidget({
-        title: "API Health",
-        metrics: [
-          new cloudwatch.MathExpression({
-            expression: "100 - (100 * errors / requests)",
-            usingMetrics: {
-              requests: new cloudwatch.Metric({
-                namespace: "AWS/ApiGateway",
-                metricName: "Count",
-                statistic: "Sum",
-              }),
-              errors: new cloudwatch.Metric({
-                namespace: "AWS/ApiGateway",
-                metricName: "5XXError",
-                statistic: "Sum",
-              }),
-            },
-            label: "Success Rate",
-            period: cdk.Duration.hours(1),
-          }),
-        ],
-        width: 8,
-        height: 4,
-      }),
-      new cloudwatch.SingleValueWidget({
-        title: "Amplify Build Success",
-        metrics: [amplifyBuildSuccessRate],
-        width: 8,
-        height: 4,
-      }),
-      new cloudwatch.SingleValueWidget({
-        title: "Active Users",
-        metrics: [
-          new cloudwatch.Metric({
-            namespace: "CWLogs",
-            metricName: "IncomingLogEvents",
-            statistic: "Sum",
-          }),
-        ],
-        width: 8,
-        height: 4,
-      })
-    );
-
     dashboard.addWidgets(...dynamodbWidgets);
     dashboard.addWidgets(...lambdaWidgets);
 
-    const apiGatewayWidget = new cloudwatch.GraphWidget({
-      title: "API Gateway Performance",
-      left: [
-        new cloudwatch.Metric({
-          namespace: "AWS/ApiGateway",
-          metricName: "Count",
-          statistic: "Sum",
+    if (props.edgeLambda) {
+      const edgeMetrics = new cloudwatch.GraphWidget({
+        title: "Edge Lambda Metrics",
+        left: [
+          new cloudwatch.Metric({
+            namespace: "AWS/Lambda",
+            metricName: "Invocations",
+            dimensionsMap: {
+              FunctionName: props.edgeLambda.functionName,
+            },
+            statistic: "Sum",
+            period: cdk.Duration.minutes(5),
+          }),
+          new cloudwatch.Metric({
+            namespace: "AWS/Lambda",
+            metricName: "Duration",
+            dimensionsMap: {
+              FunctionName: props.edgeLambda.functionName,
+            },
+            statistic: "Average",
+            period: cdk.Duration.minutes(5),
+          }),
+        ],
+        right: [
+          new cloudwatch.Metric({
+            namespace: "AWS/Lambda",
+            metricName: "Errors",
+            dimensionsMap: {
+              FunctionName: props.edgeLambda.functionName,
+            },
+            statistic: "Sum",
+            period: cdk.Duration.minutes(5),
+          }),
+        ],
+        width: 24,
+        height: 6,
+      });
+
+      dashboard.addWidgets(edgeMetrics);
+    }
+
+    if (props.webDistribution) {
+      dashboard.addWidgets(
+        new cloudwatch.GraphWidget({
+          title: "CloudFront Requests",
+          left: [
+            new cloudwatch.Metric({
+              namespace: "AWS/CloudFront",
+              metricName: "Requests",
+              dimensionsMap: {
+                DistributionId: props.webDistribution.distributionId,
+                Region: "Global",
+              },
+              statistic: "Sum",
+              period: cdk.Duration.minutes(5),
+            }),
+          ],
+          width: 12,
+          height: 6,
         }),
-        new cloudwatch.Metric({
-          namespace: "AWS/ApiGateway",
-          metricName: "Latency",
+        new cloudwatch.GraphWidget({
+          title: "CloudFront Error Rates",
+          left: [
+            new cloudwatch.Metric({
+              namespace: "AWS/CloudFront",
+              metricName: "4xxErrorRate",
+              dimensionsMap: {
+                DistributionId: props.webDistribution.distributionId,
+                Region: "Global",
+              },
+              statistic: "Average",
+              period: cdk.Duration.minutes(5),
+            }),
+            new cloudwatch.Metric({
+              namespace: "AWS/CloudFront",
+              metricName: "5xxErrorRate",
+              dimensionsMap: {
+                DistributionId: props.webDistribution.distributionId,
+                Region: "Global",
+              },
+              statistic: "Average",
+              period: cdk.Duration.minutes(5),
+            }),
+          ],
+          width: 12,
+          height: 6,
+        })
+      );
+
+      new cloudwatch.Alarm(this, "CloudFront5xxAlarm", {
+        metric: new cloudwatch.Metric({
+          namespace: "AWS/CloudFront",
+          metricName: "5xxErrorRate",
+          dimensionsMap: {
+            DistributionId: props.webDistribution.distributionId,
+            Region: "Global",
+          },
           statistic: "Average",
+          period: cdk.Duration.minutes(5),
         }),
-      ],
-      right: [
-        new cloudwatch.Metric({
-          namespace: "AWS/ApiGateway",
-          metricName: "4XXError",
-          statistic: "Sum",
-        }),
-        new cloudwatch.Metric({
-          namespace: "AWS/ApiGateway",
-          metricName: "5XXError",
-          statistic: "Sum",
-        }),
-      ],
-      width: 24,
-      height: 6,
-    });
+        threshold: 1,
+        evaluationPeriods: 2,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+        alarmDescription: "CloudFront 5xx error rate is above 1%",
+        actionsEnabled: props.environment === "prod",
+      }).addAlarmAction(new cloudwatchActions.SnsAction(alarmTopic));
+    }
 
-    dashboard.addWidgets(apiGatewayWidget);
-
-    new cloudwatch.Alarm(this, "ApiGateway5xxAlarm", {
-      metric: new cloudwatch.Metric({
-        namespace: "AWS/ApiGateway",
-        metricName: "5XXError",
-        statistic: "Sum",
-        period: cdk.Duration.minutes(5),
-      }),
-      threshold: 10,
-      evaluationPeriods: 2,
-      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
-      alarmDescription: "API Gateway has high 5XX error rate",
-      actionsEnabled: props.environment === "prod",
-    }).addAlarmAction(new cloudwatchActions.SnsAction(alarmTopic));
+    if (props.webBucket) {
+      dashboard.addWidgets(
+        new cloudwatch.GraphWidget({
+          title: "SPA Bucket Size",
+          left: [
+            new cloudwatch.Metric({
+              namespace: "AWS/S3",
+              metricName: "BucketSizeBytes",
+              dimensionsMap: {
+                BucketName: props.webBucket.bucketName,
+                StorageType: "StandardStorage",
+              },
+              statistic: "Average",
+              period: cdk.Duration.days(1),
+            }),
+          ],
+          width: 12,
+          height: 6,
+        })
+      );
+    }
   }
 }

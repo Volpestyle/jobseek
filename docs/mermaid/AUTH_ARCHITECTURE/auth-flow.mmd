@@ -1,0 +1,19 @@
+flowchart LR
+  User[[End User]]
+  ReactApp["React App (TanStack Router)"]
+  AuthContext["AuthProvider\n(contexts/auth-context.tsx)"]
+  HonoServer["Hono API Server\n(server/index.ts)"]
+  AuthJsCore["Auth.js Core\n(lib/auth/auth.server.ts)"]
+  AnonymousEndpoints["Anonymous Handlers\n(lib/auth/anonymous.ts)"]
+  RateLimiter["Rate Limiter\n(lib/auth/rate-limiter.ts)"]
+  DynamoDB[("DynamoDB\njobseek-users-*")]
+
+  User --> ReactApp --> AuthContext
+  AuthContext -->|"/api/auth/session"| HonoServer
+  HonoServer -->|"delegates"| AuthJsCore
+  HonoServer -->|"/api/auth/anonymous*"| AnonymousEndpoints
+  HonoServer -->|"middleware"| RateLimiter
+  RateLimiter --> DynamoDB
+  AuthJsCore --> DynamoDB
+  AnonymousEndpoints --> DynamoDB
+  AuthContext -->|"tokens & cookies"| ReactApp

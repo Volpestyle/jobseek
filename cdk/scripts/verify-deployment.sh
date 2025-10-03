@@ -42,7 +42,7 @@ fi
 echo -e "\n${YELLOW}2. Checking Backend Stack...${NC}"
 
 # Check DynamoDB table
-TABLE_NAME="jobseek-table-${ENVIRONMENT}"
+TABLE_NAME="jobseek-users-${ENVIRONMENT}"
 if aws dynamodb describe-table --table-name "$TABLE_NAME" &>/dev/null; then
     echo -e "${GREEN}✅ DynamoDB table exists: $TABLE_NAME${NC}"
     
@@ -83,69 +83,65 @@ else
     echo -e "${RED}❌ No Lambda functions found with prefix: $LAMBDA_PREFIX${NC}"
 fi
 
-# Check S3 buckets
 echo -e "\n${YELLOW}4. Checking S3 Buckets...${NC}"
-BUCKET_PREFIX="jobseek-.*-${ENVIRONMENT}"
-BUCKETS=$(aws s3 ls | grep -E "$BUCKET_PREFIX" || true)
+RESUME_BUCKET=$(aws cloudformation describe-stacks \
+    --stack-name "JobseekBackend-${ENVIRONMENT}" \
+    --query "Stacks[0].Outputs[?OutputKey=='ResumeBucketName'].OutputValue" \
+    --output text 2>/dev/null || echo "")
+WEB_BUCKET=$(aws cloudformation describe-stacks \
+    --stack-name "JobseekWeb-${ENVIRONMENT}" \
+    --query "Stacks[0].Outputs[?OutputKey=='WebBucketName'].OutputValue" \
+    --output text 2>/dev/null || echo "")
 
-if [ -n "$BUCKETS" ]; then
-    echo -e "${GREEN}✅ Found S3 bucket(s):${NC}"
-    echo "$BUCKETS" | awk '{print "   - " $3}'
+if [ -n "$RESUME_BUCKET" ]; then
+    echo -e "${GREEN}✅ Resume bucket:${NC} $RESUME_BUCKET"
 else
-    echo -e "${YELLOW}⚠️  No S3 buckets found with pattern: $BUCKET_PREFIX${NC}"
+    echo -e "${RED}❌ Resume bucket output missing${NC}"
 fi
 
-# 5. Verify Amplify App
-echo -e "\n${YELLOW}5. Checking Amplify App...${NC}"
-APP_NAME="jobseek-${ENVIRONMENT}"
-APP_ID=$(aws amplify list-apps \
-    --query "apps[?name=='$APP_NAME'].appId" \
-    --output text)
-
-if [ -n "$APP_ID" ]; then
-    echo -e "${GREEN}✅ Amplify app exists: $APP_NAME${NC}"
-    echo "   App ID: $APP_ID"
-    
-    # Get app URL (safe to show)
-    DEFAULT_DOMAIN=$(aws amplify get-app \
-        --app-id "$APP_ID" \
-        --query 'app.defaultDomain' \
-        --output text)
-    echo "   Default domain: https://$DEFAULT_DOMAIN"
-    
-    # Check branch status
-    BRANCH_NAME=$(aws amplify list-branches \
-        --app-id "$APP_ID" \
-        --query 'branches[0].branchName' \
-        --output text)
-    
-    if [ -n "$BRANCH_NAME" ]; then
-        echo "   Active branch: $BRANCH_NAME"
-        
-        # Verify environment variables exist (without showing values)
-        echo -e "\n   ${YELLOW}Environment Variables:${NC}"
-        ENV_VARS=$(aws amplify get-branch \
-            --app-id "$APP_ID" \
-            --branch-name "$BRANCH_NAME" \
-            --query 'branch.environmentVariables' \
-            --output json 2>/dev/null || echo "{}")
-        
-        if [ "$ENV_VARS" != "{}" ] && [ "$ENV_VARS" != "null" ]; then
-            echo "$ENV_VARS" | jq -r 'keys[]' | while read key; do
-                # Don't show the actual values, just confirm they exist
-                echo -e "   ${GREEN}✅ $key is configured${NC}"
-            done
-        else
-            echo -e "   ${YELLOW}⚠️  No environment variables configured${NC}"
-        fi
-    fi
+if [ -n "$WEB_BUCKET" ] && [ "$WEB_BUCKET" != "None" ]; then
+    echo -e "${GREEN}✅ Web assets bucket:${NC} $WEB_BUCKET"
 else
-    echo -e "${RED}❌ Amplify app not found: $APP_NAME${NC}"
+    echo -e "${RED}❌ Web assets bucket output missing${NC}"
 fi
 
-# 6. Check CloudFormation stacks
-echo -e "\n${YELLOW}6. Checking CloudFormation Stacks...${NC}"
-STACKS=("JobseekBackend-${ENVIRONMENT}" "JobseekAmplify-${ENVIRONMENT}" "JobseekMonitoring-${ENVIRONMENT}")
+# 5. Verify CloudFront distribution
+echo -e "\n${YELLOW}5. Checking CloudFront Distribution...${NC}"
+CLOUDFRONT_DOMAIN=$(aws cloudformation describe-stacks \
+    --stack-name "JobseekWeb-${ENVIRONMENT}" \
+    --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDomain'].OutputValue" \
+    --output text 2>/dev/null || echo "")
+CLOUDFRONT_ID=$(aws cloudformation describe-stacks \
+    --stack-name "JobseekWeb-${ENVIRONMENT}" \
+    --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDistributionId'].OutputValue" \
+    --output text 2>/dev/null || echo "")
+
+if [ -n "$CLOUDFRONT_ID" ] && [ "$CLOUDFRONT_ID" != "None" ]; then
+    echo -e "${GREEN}✅ CloudFront distribution:${NC} $CLOUDFRONT_ID"
+    echo "   Domain: https://$CLOUDFRONT_DOMAIN"
+else
+    echo -e "${RED}❌ CloudFront distribution not found${NC}"
+fi
+
+# 6. Verify edge Lambda
+echo -e "\n${YELLOW}6. Checking Lambda@Edge Function...${NC}"
+EDGE_FUNCTIONS=$(aws lambda list-functions \
+    --region us-east-1 \
+    --query "Functions[?starts_with(FunctionName, 'JobseekWeb-${ENVIRONMENT}')].FunctionName" \
+    --output text 2>/dev/null || echo "")
+
+if [ -n "$EDGE_FUNCTIONS" ]; then
+    echo -e "${GREEN}✅ Edge function(s) detected:${NC}"
+    echo "$EDGE_FUNCTIONS" | tr '\t' '\n' | while read func; do
+        echo "   - $func"
+    done
+else
+    echo -e "${RED}❌ No edge functions found for JobseekWeb-${ENVIRONMENT}${NC}"
+fi
+
+# 7. Check CloudFormation stacks
+echo -e "\n${YELLOW}7. Checking CloudFormation Stacks...${NC}"
+STACKS=("JobseekBackend-${ENVIRONMENT}" "JobseekWeb-${ENVIRONMENT}" "JobseekMonitoring-${ENVIRONMENT}")
 
 for STACK in "${STACKS[@]}"; do
     STATUS=$(aws cloudformation describe-stacks \
@@ -174,12 +170,17 @@ echo -e "Verification Complete for Environment: $ENVIRONMENT"
 echo -e "==================================================${NC}"
 
 echo -e "\n${YELLOW}Next Steps:${NC}"
-echo "1. Visit your Amplify URL to test the application"
-echo "2. Try logging in with Google OAuth"
-echo "3. Check CloudWatch logs for any errors"
-echo "4. Monitor the CloudWatch dashboard (if deployed)"
+echo "1. Hit the CloudFront domain and walk through auth + API calls"
+echo "2. Confirm OAuth redirect URIs include the CloudFront domain"
+echo "3. Review Lambda and CloudFront error metrics in CloudWatch"
+echo "4. Share the deployment URL with your stakeholders"
 
 echo -e "\n${YELLOW}Useful Commands:${NC}"
-echo "- View Lambda logs: aws logs tail /aws/lambda/jobseek-search-scheduler-${ENVIRONMENT} --follow"
-echo "- Check Amplify build logs: Open AWS Amplify console"
+echo "- View scheduler logs: aws logs tail /aws/lambda/jobseek-search-scheduler-${ENVIRONMENT} --follow"
+if [ -n "$EDGE_FUNCTIONS" ]; then
+    EDGE_EXAMPLE=$(echo "$EDGE_FUNCTIONS" | tr '\t' '\n' | head -n1)
+    echo "- View edge logs: aws logs tail /aws/lambda/$EDGE_EXAMPLE --region us-east-1 --follow"
+else
+    echo "- View edge logs: aws logs tail /aws/lambda/<edge-function-name> --region us-east-1 --follow"
+fi
 echo "- Monitor costs: aws ce get-cost-and-usage --time-period Start=2024-01-01,End=2024-01-31 --metrics 'UnblendedCost'"

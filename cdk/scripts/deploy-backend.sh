@@ -95,25 +95,70 @@ echo ""
 # Map environment names to .env file names
 case "$ENVIRONMENT" in
     dev|development|local)
-        ENV_FILE=".env.local"
+        ENV_FILE_NAME=".env.local"
         ;;
     staging)
-        ENV_FILE=".env.staging"
+        ENV_FILE_NAME=".env.staging"
         ;;
     prod|production)
-        ENV_FILE=".env.prod"
+        ENV_FILE_NAME=".env.prod"
         ;;
     *)
-        ENV_FILE=".env.$ENVIRONMENT"
+        ENV_FILE_NAME=".env.$ENVIRONMENT"
         ;;
 esac
 
-if [[ ! -f "$ENV_FILE" ]]; then
-    echo -e "${RED}❌ Environment file not found: $ENV_FILE${NC}"
-    echo -e "${YELLOW}Creating from template...${NC}"
-    cp .env.example "$ENV_FILE"
-    echo -e "${YELLOW}⚠️  Please edit $ENV_FILE with your values and run again${NC}"
-    exit 1
+LOCAL_ENV_FILE="./$ENV_FILE_NAME"
+PARENT_ENV_FILE="../$ENV_FILE_NAME"
+
+if [[ -f "$LOCAL_ENV_FILE" ]]; then
+    ENV_FILE="$LOCAL_ENV_FILE"
+elif [[ -f "$PARENT_ENV_FILE" ]]; then
+    ENV_FILE="$PARENT_ENV_FILE"
+else
+    ENV_FILE="$PARENT_ENV_FILE"
+fi
+
+ENV_FILE_ABS=$(python3 -c "import os,sys; print(os.path.abspath(sys.argv[1]))" "$ENV_FILE" 2>/dev/null || echo "$ENV_FILE")
+
+fetch_env_from_secrets() {
+    local secret_name="jobseek/env-file-${ENVIRONMENT}"
+    local fetch_region="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}"
+    echo -e "${YELLOW}🔐 Downloading environment file from Secrets Manager (${secret_name})...${NC}"
+    local target_dir
+    target_dir=$(dirname "$ENV_FILE")
+    if [[ ! -d "$target_dir" ]]; then
+        mkdir -p "$target_dir"
+    fi
+    if aws secretsmanager get-secret-value \
+        --secret-id "$secret_name" \
+        --region "$fetch_region" \
+        --query SecretString \
+        --output text > "$ENV_FILE"; then
+        ENV_FILE_ABS=$(python3 -c "import os,sys; print(os.path.abspath(sys.argv[1]))" "$ENV_FILE" 2>/dev/null || echo "$ENV_FILE")
+        echo -e "${GREEN}✅ Environment file written to $ENV_FILE_ABS${NC}"
+        return 0
+    fi
+
+    rm -f "$ENV_FILE" 2>/dev/null || true
+    echo -e "${RED}❌ Failed to download environment file from Secrets Manager${NC}"
+    return 1
+}
+
+if [[ "${CI:-}" == "true" ]]; then
+    if ! fetch_env_from_secrets; then
+        echo -e "${RED}❌ Unable to retrieve $ENV_FILE_NAME in CI${NC}"
+        echo -e "${YELLOW}Ensure you've run: pnpm --filter @jobseek/cdk secrets:${ENVIRONMENT}${NC}"
+        exit 1
+    fi
+elif [[ ! -f "$ENV_FILE" ]]; then
+    echo -e "${YELLOW}ℹ️  Environment file not found locally (${ENV_FILE_NAME}). Attempting to fetch from Secrets Manager...${NC}"
+    if ! fetch_env_from_secrets; then
+        echo -e "${RED}❌ Please create $ENV_FILE_NAME at $ENV_FILE_ABS and sync it with Secrets Manager${NC}"
+        echo -e "${YELLOW}Run: pnpm --filter @jobseek/cdk secrets:${ENVIRONMENT}${NC}"
+        echo -e "${YELLOW}Or fetch manually: aws secretsmanager get-secret-value --secret-id jobseek/env-file-${ENVIRONMENT} --region ${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}} --query SecretString --output text > $ENV_FILE_ABS${NC}"
+        exit 1
+    fi
 fi
 
 # Install dependencies if needed
@@ -125,7 +170,7 @@ fi
 # Step 1: Deploy secrets (unless skipped)
 if [[ "$SKIP_SECRETS" != "true" ]]; then
     echo -e "${YELLOW}🔐 Deploying secrets to AWS Secrets Manager...${NC}"
-    npx ts-node deploy-secrets.ts "$ENVIRONMENT"
+    npx ts-node scripts/deploy-secrets.ts "$ENVIRONMENT"
     
     if [[ $? -ne 0 ]]; then
         echo -e "${RED}❌ Failed to deploy secrets${NC}"

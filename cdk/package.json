@@ -16,10 +16,6 @@
     "deploy:backend:dev": "./scripts/deploy-backend.sh dev",
     "deploy:backend:staging": "./scripts/deploy-backend.sh staging",
     "deploy:backend:prod": "./scripts/deploy-backend.sh prod",
-    "deploy:nextjs": "./scripts/deploy-nextjs.sh",
-    "deploy:nextjs:dev": "./scripts/deploy-nextjs.sh dev",
-    "deploy:nextjs:staging": "./scripts/deploy-nextjs.sh staging",
-    "deploy:nextjs:prod": "./scripts/deploy-nextjs.sh prod",
     "verify": "./scripts/verify-deployment.sh",
     "verify:dev": "./scripts/verify-deployment.sh dev",
     "verify:staging": "./scripts/verify-deployment.sh staging",
@@ -38,7 +34,7 @@
     "cleanup:staging": "./scripts/cleanup.sh staging",
     "cleanup:prod": "./scripts/cleanup.sh prod",
     "cleanup:dev:force": "./scripts/cleanup.sh dev --force",
-    "cleanup:dev:amplify": "./scripts/cleanup.sh dev amplify"
+    "cleanup:dev:web": "./scripts/cleanup.sh dev web"
   },
   "devDependencies": {
     "@types/node": "20.11.5",
@@ -51,6 +47,7 @@
     "constructs": "^10.3.0",
     "source-map-support": "^0.5.21",
     "@aws-sdk/client-secrets-manager": "^3.0.0",
-    "dotenv": "^16.0.0"
+    "dotenv": "^16.0.0",
+    "zod": "^3.23.8"
   }
 }
