@@ -210,8 +210,20 @@ fi
 echo ""
 
 # Build the web client prior to deployment so assets are available
-echo -e "${YELLOW}🛠️  Building web client bundle...${NC}"
-pnpm --dir .. build:deploy
+CLIENT_DIST_DIR="../dist"
+CLIENT_DIST_INDEX="${CLIENT_DIST_DIR}/index.html"
+
+if [[ "${SKIP_CLIENT_BUILD}" == "true" ]]; then
+    echo -e "${YELLOW}⏩ Skipping client build (SKIP_CLIENT_BUILD=true)${NC}"
+    if [[ ! -f "$CLIENT_DIST_INDEX" ]]; then
+        echo -e "${RED}❌ Prebuilt client assets not found at $CLIENT_DIST_INDEX${NC}"
+        echo -e "${YELLOW}Ensure the build artifact was downloaded or unset SKIP_CLIENT_BUILD${NC}"
+        exit 1
+    fi
+else
+    echo -e "${YELLOW}🛠️  Building web client bundle...${NC}"
+    pnpm --dir .. build:deploy
+fi
 echo ""
 
 # Step 3: Deploy CDK stacks

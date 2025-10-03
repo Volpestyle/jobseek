@@ -4,9 +4,10 @@ on:
   push:
     branches:
       - main
+      - release-*
 
 concurrency:
-  group: deploy-main
+  group: deploy-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
@@ -18,9 +19,27 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      deploy-environment: ${{ steps.determine-environment.outputs.deploy-environment }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Determine deploy environment
+        id: determine-environment
+        run: |
+          branch="${GITHUB_REF_NAME}"
+          if [[ "$branch" == "main" ]]; then
+            env_name="dev"
+          elif [[ "$branch" == release-* ]]; then
+            env_name="prod"
+          else
+            env_name="dev"
+          fi
+          echo "deploy-environment=$env_name" >> "$GITHUB_OUTPUT"
+
+      - name: Export deploy environment
+        run: echo "DEPLOY_ENV=${{ steps.determine-environment.outputs.deploy-environment }}" >> "$GITHUB_ENV"
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -32,6 +51,17 @@ jobs:
         with:
           node-version: 20
           cache: pnpm
+
+      - name: Cache pnpm store and node_modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pnpm-store
+            node_modules
+            cdk/node_modules
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -45,12 +75,21 @@ jobs:
       - name: Build CDK workspace
         run: pnpm --filter @jobseek/cdk build
 
+      - name: Upload client build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-dist
+          path: dist
+          if-no-files-found: error
+
   deploy:
     runs-on: ubuntu-latest
     needs: build
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release-')
+    env:
+      DEPLOY_ENV: ${{ needs.build.outputs.deploy-environment }}
     environment:
-      name: dev
+      name: ${{ needs.build.outputs.deploy-environment }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -66,8 +105,25 @@ jobs:
           node-version: 20
           cache: pnpm
 
+      - name: Cache pnpm store and node_modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pnpm-store
+            node_modules
+            cdk/node_modules
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Download client build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: client-dist
+          path: dist
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -78,4 +134,5 @@ jobs:
       - name: Deploy infrastructure
         env:
           AWS_REGION: ${{ env.AWS_REGION }}
-        run: pnpm --filter @jobseek/cdk deploy:dev -- --non-interactive
+          SKIP_CLIENT_BUILD: "true"
+        run: pnpm --filter @jobseek/cdk deploy:${{ needs.build.outputs.deploy-environment }} -- --non-interactive

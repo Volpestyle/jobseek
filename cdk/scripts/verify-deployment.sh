@@ -123,8 +123,24 @@ else
     echo -e "${RED}❌ CloudFront distribution not found${NC}"
 fi
 
-# 6. Verify edge Lambda
-echo -e "\n${YELLOW}6. Checking Lambda@Edge Function...${NC}"
+# 6. Perform HTTP health check
+if [ -n "$CLOUDFRONT_DOMAIN" ] && [ "$CLOUDFRONT_DOMAIN" != "None" ]; then
+    echo -e "\n${YELLOW}6. Performing HTTP health check...${NC}"
+    HEALTH_URL="https://${CLOUDFRONT_DOMAIN}/"
+    HTTP_STATUS=$(curl -Ls -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 20 "$HEALTH_URL" || echo "000")
+
+    if [[ "$HTTP_STATUS" =~ ^2 ]]; then
+        echo -e "${GREEN}✅ Health check passed (HTTP ${HTTP_STATUS})${NC}"
+    else
+        echo -e "${RED}❌ Health check failed (HTTP ${HTTP_STATUS}) at $HEALTH_URL${NC}"
+        exit 1
+    fi
+else
+    echo -e "\n${YELLOW}6. Skipping health check (no CloudFront domain available)${NC}"
+fi
+
+# 7. Verify edge Lambda
+echo -e "\n${YELLOW}7. Checking Lambda@Edge Function...${NC}"
 EDGE_FUNCTIONS=$(aws lambda list-functions \
     --region us-east-1 \
     --query "Functions[?starts_with(FunctionName, 'JobseekWeb-${ENVIRONMENT}')].FunctionName" \
@@ -139,8 +155,8 @@ else
     echo -e "${RED}❌ No edge functions found for JobseekWeb-${ENVIRONMENT}${NC}"
 fi
 
-# 7. Check CloudFormation stacks
-echo -e "\n${YELLOW}7. Checking CloudFormation Stacks...${NC}"
+# 8. Check CloudFormation stacks
+echo -e "\n${YELLOW}8. Checking CloudFormation Stacks...${NC}"
 STACKS=("JobseekBackend-${ENVIRONMENT}" "JobseekWeb-${ENVIRONMENT}" "JobseekMonitoring-${ENVIRONMENT}")
 
 for STACK in "${STACKS[@]}"; do
@@ -164,7 +180,7 @@ for STACK in "${STACKS[@]}"; do
     fi
 done
 
-# 7. Summary
+# 8. Summary
 echo -e "\n${YELLOW}=================================================="
 echo -e "Verification Complete for Environment: $ENVIRONMENT"
 echo -e "==================================================${NC}"
