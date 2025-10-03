@@ -235,28 +235,22 @@ export class MigrationService {
 
     try {
       // Calculate total items for progress tracking
-      const totalItems = 
-        data.savedJobs.length + 
-        data.savedSearches.length + 
-        data.applications.length + 
-        data.jobBoards.length + 
-        data.searchResults.length + 
+      const totalItems =
+        data.savedJobs.length +
+        data.savedSearches.length +
+        data.applications.length +
+        data.jobBoards.length +
+        data.searchResults.length +
         (data.profile ? 1 : 0);
-      
-      let processedItems = 0;
 
-      // Helper function to update progress
-      const updateProgress = (type: string, increment: number = 1) => {
-        processedItems += increment;
-        if (onProgress) {
-          onProgress({
-            totalItems,
-            processedItems,
-            currentType: type,
-            percentage: Math.round((processedItems / totalItems) * 100)
-          });
-        }
-      };
+      if (onProgress) {
+        onProgress({
+          totalItems,
+          processedItems: 0,
+          currentType: "initializing",
+          percentage: totalItems === 0 ? 100 : 0,
+        });
+      }
 
       // Call the migration API
       const response = await fetch('/api/auth/migrate', {
@@ -295,6 +289,15 @@ export class MigrationService {
         );
       } else {
         this.setMigrationStatus('failed');
+      }
+
+      if (onProgress) {
+        onProgress({
+          totalItems,
+          processedItems: totalItems,
+          currentType: 'completed',
+          percentage: 100
+        });
       }
 
     } catch (error) {

@@ -13,7 +13,6 @@ import {
   batchWriteItems,
   batchGetItems,
   createTimestamps,
-  buildUpdateExpression,
   isValidItem,
 } from "./dynamodb-helpers";
 
@@ -43,6 +42,7 @@ const DATA_TYPES = {
   JOB_SEARCH_RESULT: "JOB_SEARCH_RESULT#",
   ACTION_LOG: "ACTION_LOG#",
   MASTER_SEARCH: "MASTER_SEARCH#",
+  ANON_REFRESH: "ANON_REFRESH#",
 } as const;
 
 // User Profile Interface
@@ -140,6 +140,92 @@ export interface SavedSearch {
   initialized?: boolean;
 }
 
+type SavedSearchRecord = Omit<SavedSearch, "isActive"> & {
+  dataType?: string;
+  isActive?: string | boolean;
+};
+
+const toDynamoBooleanString = (value: unknown): string | undefined => {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "true" : "false";
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.toLowerCase();
+    if (normalized === "true" || normalized === "false") {
+      return normalized;
+    }
+    return value;
+  }
+
+  return undefined;
+};
+
+const fromDynamoBooleanString = (value: unknown): boolean | undefined => {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.toLowerCase();
+    if (normalized === "true") {
+      return true;
+    }
+    if (normalized === "false") {
+      return false;
+    }
+  }
+
+  return undefined;
+};
+
+const serializeSavedSearch = (search: SavedSearch): SavedSearchRecord => {
+  const { isActive, ...rest } = search;
+  const record: SavedSearchRecord = { ...rest };
+  const serialized = toDynamoBooleanString(isActive);
+  if (serialized !== undefined) {
+    record.isActive = serialized;
+  }
+  return record;
+};
+
+const deserializeSavedSearch = (
+  record: SavedSearchRecord | null | undefined
+): SavedSearch | null => {
+  if (!record) {
+    return null;
+  }
+
+  const { isActive, dataType: _dataType, ...rest } = record;
+  void _dataType;
+  const normalized: SavedSearch = { ...rest } as SavedSearch;
+  const deserialized = fromDynamoBooleanString(isActive);
+  if (deserialized !== undefined) {
+    normalized.isActive = deserialized;
+  }
+  return normalized;
+};
+
+const deserializeSavedSearchArray = (
+  records: SavedSearchRecord[] | undefined | null
+): SavedSearch[] => {
+  if (!records || records.length === 0) {
+    return [];
+  }
+
+  return records
+    .map((record) => deserializeSavedSearch(record))
+    .filter((record): record is SavedSearch => record !== null);
+};
+
 export interface JobApplication {
   userId: string;
   applicationId: string;
@@ -157,7 +243,7 @@ export interface JobApplicationEvent {
   type: "status_change" | "interview" | "note" | "follow_up" | "offer";
   date: string;
   description: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface JobBoard {
@@ -171,6 +257,16 @@ export interface JobBoard {
   updatedAt: string;
   isPublic: boolean;
   sharedWith?: string[];
+}
+
+export interface AnonymousRefreshToken {
+  userId: string;
+  tokenId: string;
+  refreshTokenHash: string;
+  expiresAt: string;
+  ttl: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface UserPreferences {
@@ -278,6 +374,63 @@ export class DynamoDBSingleTableService {
     }));
 
     await batchWriteItems(docClient, USERS_TABLE, items);
+  }
+
+  async saveAnonymousRefreshToken(params: {
+    userId: string;
+    tokenId: string;
+    refreshTokenHash: string;
+    expiresAt: string;
+    ttl: number;
+  }): Promise<void> {
+    const { userId, tokenId, refreshTokenHash, expiresAt, ttl } = params;
+    const timestamps = createTimestamps(true);
+
+    const command = new PutCommand({
+      TableName: USERS_TABLE,
+      Item: {
+        userId,
+        dataType: `${DATA_TYPES.ANON_REFRESH}${tokenId}`,
+        tokenId,
+        refreshTokenHash,
+        expiresAt,
+        ttl,
+        ...timestamps,
+      },
+    });
+
+    await withRetry(() => docClient.send(command));
+  }
+
+  async getAnonymousRefreshToken(
+    userId: string,
+    tokenId: string
+  ): Promise<AnonymousRefreshToken | null> {
+    const command = new GetCommand({
+      TableName: USERS_TABLE,
+      Key: {
+        userId,
+        dataType: `${DATA_TYPES.ANON_REFRESH}${tokenId}`,
+      },
+    });
+
+    const response = await docClient.send(command);
+    return (response.Item as AnonymousRefreshToken) || null;
+  }
+
+  async deleteAnonymousRefreshToken(
+    userId: string,
+    tokenId: string
+  ): Promise<void> {
+    const command = new DeleteCommand({
+      TableName: USERS_TABLE,
+      Key: {
+        userId,
+        dataType: `${DATA_TYPES.ANON_REFRESH}${tokenId}`,
+      },
+    });
+
+    await withRetry(() => docClient.send(command));
   }
   // User Profile Methods
   async getUserProfile(userId: string): Promise<UserProfile | null> {
@@ -449,8 +602,8 @@ export class DynamoDBSingleTableService {
   // Saved Searches Methods
   async saveSearch(search: SavedSearch): Promise<SavedSearch> {
     const timestamps = createTimestamps(!search.createdAt);
-    const item = {
-      ...search,
+    const item: SavedSearchRecord = {
+      ...serializeSavedSearch(search),
       dataType: `${DATA_TYPES.SAVED_SEARCH}${search.searchId}`,
       ...timestamps,
     };
@@ -461,7 +614,7 @@ export class DynamoDBSingleTableService {
     });
 
     await withRetry(() => docClient.send(command));
-    return item;
+    return deserializeSavedSearch(item)!;
   }
 
   async getSavedSearches(userId: string): Promise<SavedSearch[]> {
@@ -475,7 +628,7 @@ export class DynamoDBSingleTableService {
       },
     });
     const response = await docClient.send(command);
-    return (response.Items as SavedSearch[]) || [];
+    return deserializeSavedSearchArray(response.Items as SavedSearchRecord[]);
   }
 
   async getSavedSearch(
@@ -490,7 +643,7 @@ export class DynamoDBSingleTableService {
       },
     });
     const response = await docClient.send(command);
-    return (response.Item as SavedSearch) || null;
+    return deserializeSavedSearch(response.Item as SavedSearchRecord | undefined);
   }
 
   async updateSearchLastRun(userId: string, searchId: string): Promise<void> {
@@ -511,15 +664,29 @@ export class DynamoDBSingleTableService {
 
   async updateSavedSearch(search: SavedSearch): Promise<SavedSearch> {
     const { userId, searchId, ...updates } = search;
-    return atomicUpdate<SavedSearch>(
+    const normalizedUpdates: Partial<SavedSearchRecord> = {
+      ...updates,
+    } as Partial<SavedSearchRecord>;
+
+    if (normalizedUpdates.isActive !== undefined) {
+      const serialized = toDynamoBooleanString(normalizedUpdates.isActive);
+      if (serialized !== undefined) {
+        normalizedUpdates.isActive = serialized;
+      } else {
+        delete normalizedUpdates.isActive;
+      }
+    }
+
+    const updated = await atomicUpdate<SavedSearchRecord>(
       docClient,
       USERS_TABLE,
       {
         userId,
         dataType: `${DATA_TYPES.SAVED_SEARCH}${searchId}`,
       },
-      updates
+      normalizedUpdates
     );
+    return deserializeSavedSearch(updated)!;
   }
 
   async deleteSavedSearch(userId: string, searchId: string): Promise<void> {
