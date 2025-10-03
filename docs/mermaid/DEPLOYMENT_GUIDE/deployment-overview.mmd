@@ -1,0 +1,15 @@
+flowchart LR
+  Developer[[Developer Workstation]]
+  LocalEnv["Local Env\n(pnpm server:dev + client:dev)"]
+  Repo[(Git Repository)]
+  Pipeline["CI/CD Pipeline\n(GitHub Actions / Custom)"]
+  Artifacts["Build Artifacts\n(Hono bundle + Vite assets)"]
+  AWSInfra["AWS Infrastructure\n(CDK: DynamoDB, S3, Lambda, EventBridge)"]
+  Hosting["Prod Hosting\n(API Gateway/Lambda or ECS)\n+ CDN (CloudFront/S3)"]
+
+  Developer -->|"pnpm install"| LocalEnv
+  LocalEnv -->|"push changes"| Repo
+  Repo --> Pipeline
+  Pipeline -->|"synth/deploy"| AWSInfra
+  Pipeline -->|"publish"| Artifacts --> Hosting
+  AWSInfra --> Hosting

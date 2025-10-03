@@ -1,437 +1,154 @@
-# JobSeek Deployment Guide
+# JobSeek Deployment & Environment Guide
 
-## Quick Start
+The project now runs as a split architecture: a standalone Node + Hono API server and a Vite-built React client. This guide captures how to run the system today and the remaining work to productionise the new stack.
 
-Deploy JobSeek to AWS in under 10 minutes:
+![Deployment overview](./mermaid/DEPLOYMENT_GUIDE/deployment-overview.svg)
+<!-- Mermaid source: mermaid/DEPLOYMENT_GUIDE/deployment-overview.mmd -->
 
+## Local Development
+
+### 1. Install Dependencies
 ```bash
-# Clone repository
-git clone <repository-url>
-cd jobseek/cdk
-
-# Install dependencies
 pnpm install
-
-# Deploy to development
-pnpm deploy:dev
 ```
+> The repository uses pnpm workspaces and links to packages inside the sibling `wallcrawler` repo. Ensure `../wallcrawler` exists so the links resolve.
 
-## Prerequisites
-
-### Required Tools
+### 2. Environment Variables
+Create a `.env.local` at the repository root:
 ```bash
-# Check versions
-node --version      # Required: v18.x+
-aws --version       # Required: v2.x
-cdk --version       # Required: v2.x
-pnpm --version      # Required: v8.x+
-
-# Install missing tools
-npm install -g aws-cdk
-npm install -g pnpm
+cp .env.example .env.local
 ```
+Populate the variables for OAuth providers, anonymous token secret, Wallcrawler keys, and AWS credentials. Both the Hono server and the React client rely on the same set.
 
-### AWS Setup
+### 3. Run the Services
+Start the API server (terminal 1):
 ```bash
-# Configure AWS credentials
-aws configure
-
-# Verify access
-aws sts get-caller-identity
-
-# Bootstrap CDK (first time only)
-cdk bootstrap aws://ACCOUNT-ID/us-east-1
+pnpm server:dev
 ```
+Start the web client (terminal 2):
+```bash
+pnpm client:dev
+```
+Visit `http://localhost:5173`. Vite proxies `/api/*` requests to `http://localhost:3000` where the Hono server runs. Auth, Wallcrawler orchestration, saved jobs, resumes, and profile endpoints all live inside `lib/server/router.ts`.
+
+Optional scripts:
+- `pnpm server:start` – run the API server without file watching
+- `pnpm client:build` – produce a production bundle for the React app
+- `pnpm client:preview` – preview the built assets locally
+- `pnpm mermaid:generate` – render documentation diagrams
 
 ## Environment Configuration
 
-### 1. Create Environment Files
-
-```bash
-# Development
-cp .env.example .env.local
-# Edit with your OAuth credentials and API keys
-
-# Staging
-cp .env.example .env.staging
-
-# Production  
-cp .env.example .env.prod
-```
-
-### 2. Required Environment Variables
-
+### Required Variables
 ```env
+# Auth.js session configuration
+APP_ORIGIN=http://localhost:5173
+AUTH_REDIRECT_ALLOWLIST=http://localhost:5173
+AUTH_SECRET=change-me
+
 # OAuth Providers
-GOOGLE_CLIENT_ID=your-google-client-id
-GOOGLE_CLIENT_SECRET=your-google-client-secret
-TWITTER_CLIENT_ID=your-twitter-client-id
-TWITTER_CLIENT_SECRET=your-twitter-client-secret
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+TWITTER_CLIENT_ID=
+TWITTER_CLIENT_SECRET=
 
-# Security
-NEXTAUTH_SECRET=generate-random-secret
+# Anonymous JWT
+ANONYMOUS_JWT_SECRET=change-me
 
-# External APIs
-GITHUB_TOKEN=ghp_xxxxxxxxxxxx
-WALLCRAWLER_API_KEY=wc_xxxxxxxxxxxx
+# Wallcrawler
+WALLCRAWLER_API_URL=
+WALLCRAWLER_API_KEY=
+WALLCRAWLER_PROJECT_ID=
+ANTHROPIC_API_KEY=
+
+# AWS (DynamoDB, S3, rate limiting)
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+DYNAMODB_USERS_TABLE=jobseek-users
+S3_RESUME_BUCKET=jobseek-resumes
+
+# Optional client config
+VITE_APP_ENV=local
+DEBUG=false
+
+# Optional rate limiter tuning
+# RATE_LIMIT_ANON_SESSION_MAX=30
+# RATE_LIMIT_ANON_SESSION_WINDOW_MS=3600000
+# RATE_LIMIT_ANON_REFRESH_MAX=240
+# RATE_LIMIT_ANON_REFRESH_WINDOW_MS=300000
 ```
 
-### 3. Generate Secrets
+> Set `APP_ORIGIN` to the public URL of the client (for example your CloudFront domain in staging/production) and mirror any additional domains in `AUTH_REDIRECT_ALLOWLIST` so Auth.js redirects back to the SPA after login.
+> Use the `RATE_LIMIT_*` overrides to raise limits in lower environments or during load testing while keeping production defaults focused on spam mitigation.
 
+### Files to Create Per Environment
+- `.env.local` – local development
+- `.env.dev`, `.env.staging`, `.env.prod` – values consumed by CDK pipelines or deployment scripts
+
+## AWS Infrastructure (CDK)
+
+The `cdk/` workspace now provisions both the shared data plane and the customer-facing surfaces:
+- DynamoDB table (`jobseek-users-*`)
+- S3 resume bucket (`jobseek-resumes-*`)
+- EventBridge rules + Lambda scheduler for Wallcrawler jobs
+- Secrets Manager entries for third-party credentials
+- S3 bucket + CloudFront distribution for the Vite client
+- Lambda@Edge function that runs the Hono API
+
+Common commands:
 ```bash
-# Generate NextAuth secret
-openssl rand -base64 32
-
-# Create GitHub token
-# Go to: GitHub Settings → Developer Settings → Personal Access Tokens
-# Scopes needed: repo (for Amplify deployments)
+pnpm --filter @jobseek/cdk cdk:synth       # review CloudFormation template
+pnpm --filter @jobseek/cdk cdk:diff        # compare with deployed stacks
+pnpm --filter @jobseek/cdk cdk:dev         # deploy backend + web stacks to dev
 ```
 
-## Deployment Commands
+> The deploy script builds the Vite client (`pnpm build:deploy`) before pushing assets to S3. Make sure the `dist/` directory exists or the CDK synthesis will fail.
 
-### Complete Deployment
+## Production Deployment Status
 
-Deploy both backend infrastructure and frontend:
+| Area | Current Behavior | Remaining Work |
+| ---- | ----------------- | -------------- |
+| API hosting | Hono server packaged as Lambda@Edge and attached to CloudFront | Harden secret rotation + runtime observability |
+| Client hosting | React SPA deployed to versioned S3 bucket behind CloudFront | Automate cache-busting/invalidation from CI |
+| Auth | Auth.js core + anonymous flow entirely handled inside Hono | Confirm OAuth configs per environment and lock cookie policies |
+| CI/CD | GitHub Actions workflow builds + deploys on `main` | Add approvals/notifications + staging promotion once ready |
 
-```bash
-# Development
-pnpm deploy:dev
+## GitHub Actions CI/CD
 
-# Staging  
-pnpm deploy:staging
+Pushing to `main` triggers `.github/workflows/deploy.yml`, which:
+- runs the build job (`pnpm lint`, `pnpm client:build`, `pnpm --filter @jobseek/cdk build`) on Ubuntu using Node 20 + pnpm 9;
+- runs a deploy job that re-installs dependencies, assumes the GitHub OIDC role, and executes `pnpm --filter @jobseek/cdk deploy:dev -- --non-interactive`;
+- lets `deploy.sh` download `.env.local` from AWS Secrets Manager (`jobseek/env-file-dev`) before syncing individual secrets and deploying the CDK stacks; no GitHub Actions secrets are required for the env file.
 
-# Production (requires confirmation)
-pnpm deploy:prod
-```
+The workflow relies solely on the configured IAM role (`arn:aws:iam::842434829012:role/github-oidc`) and the region declared in the workflow (`AWS_REGION=us-east-1`); no static AWS keys are stored in GitHub.
 
-### Selective Deployment
+### Environment secret workflow
 
-#### Backend Only
-```bash
-# Deploy DynamoDB, S3, and other backend resources
-pnpm deploy:backend:dev
-pnpm deploy:backend:staging
-pnpm deploy:backend:prod
-```
-
-#### Frontend Only
-```bash
-# Deploy Next.js app to Amplify
-pnpm deploy:nextjs:dev
-pnpm deploy:nextjs:staging  
-pnpm deploy:nextjs:prod
-```
-
-#### Monitoring Stack
-```bash
-# Deploy CloudWatch dashboards and alarms
-cd cdk
-cdk deploy JobseekMonitoring-dev --context environment=dev
-```
-
-### Advanced Options
-
-```bash
-# Skip manual approval (dev only)
-pnpm deploy:dev:auto
-
-# Use existing secrets
-pnpm deploy:dev:skip-secrets
-
-# Deploy specific stack
-cdk deploy JobseekBackend-dev
-
-# Preview changes
-cdk diff --all --context environment=dev
-```
-
-## Environment-Specific Configurations
-
-### Development
-```json
-{
-  "environment": "dev",
-  "branchName": "main",
-  "domainName": "",
-  "enableBackups": false,
-  "enableDetailedMonitoring": false
-}
-```
-
-### Staging
-```json
-{
-  "environment": "staging",
-  "branchName": "staging",
-  "domainName": "staging.jobseek.com",
-  "enableBackups": true,
-  "enableDetailedMonitoring": true
-}
-```
-
-### Production
-```json
-{
-  "environment": "prod",
-  "branchName": "production",
-  "domainName": "jobseek.com",
-  "enableBackups": true,
-  "enableDetailedMonitoring": true,
-  "alarmEmail": "ops@jobseek.com"
-}
-```
-
-## Post-Deployment Steps
-
-### 1. Verify Deployment
-
-```bash
-# Run verification script
-pnpm verify:dev
-
-# Manual checks
-aws amplify list-apps
-aws dynamodb list-tables
-aws lambda list-functions
-aws s3 ls
-```
-
-### 2. Configure OAuth Providers
-
-#### Google Console
-1. Go to [Google Cloud Console](https://console.cloud.google.com)
-2. Navigate to APIs & Services → Credentials
-3. Add authorized redirect URI:
-   ```
-   https://[amplify-domain]/api/auth/callback/google
-   ```
-
-#### Twitter Developer Portal
-1. Go to [Twitter Developer Portal](https://developer.twitter.com)
-2. Navigate to your app settings
-3. Add callback URL:
-   ```
-   https://[amplify-domain]/api/auth/callback/twitter
-   ```
-
-### 3. Trigger Initial Build
-
-```bash
-# Get Amplify app ID
-aws amplify list-apps
-
-# Start build
-aws amplify start-job \
-  --app-id [APP-ID] \
-  --branch-name main \
-  --job-type RELEASE
-```
-
-### 4. Test Application
-
-1. **Access Application**
+1. Maintain the repo-root `.env.local` locally (never commit it).
+2. Whenever a value changes, run `pnpm secrets:dev` (shorthand for `pnpm --filter @jobseek/cdk secrets:dev`). The script:
+   - reads `.env.local`;
+   - syncs individual keys into AWS Secrets Manager (e.g. `jobseek/wallcrawler-api-key`);
+   - stores the raw file in `jobseek/env-file-<env>` so CI runners can download it.
+3. During CI (or any run where `.env.local` is missing) `deploy.sh` and `deploy-backend.sh` automatically execute:
    ```bash
-   # Get app URL
-   aws amplify get-app --app-id [APP-ID] \
-     --query "app.defaultDomain"
+   aws secretsmanager get-secret-value \
+     --secret-id jobseek/env-file-<env> \
+     --region <aws-region> \
+     --query SecretString --output text > .env.<env>
    ```
+   (For dev this writes `.env.local` at the repo root; swap the suffix for `.env.staging`, `.env.prod`, etc. Use `us-east-1` for the current AWS account.)
+   Then it continues with the normal deployment flow.
 
-2. **Test Authentication**
-   - Click "Sign In"
-   - Test Google OAuth
-   - Test Twitter OAuth
+If you ever need to bootstrap a new machine, run the same `aws secretsmanager get-secret-value` command manually and update the file before invoking `pnpm --filter @jobseek/cdk secrets:dev` again.
 
-3. **Test Core Features**
-   - Create a job search
-   - Upload a resume
-   - Save job preferences
+## Migration To-Do (Deployment)
 
-## Troubleshooting
+- [x] Decide on the runtime for the Hono server in production (Lambda@Edge)
+- [x] Create build/packaging step for the Hono server (NodejsFunction bundling)
+- [x] Publish the Vite client build as part of the deployment pipeline
+- [x] Update CDK stacks to remove Amplify and add the new hosting solution
+- [x] Revisit environment variable delivery (Secrets Manager for runtime + Vite env injection)
+- [ ] Validate that anonymous auth + session refresh work end-to-end once deployed
 
-### Common Issues
-
-#### 1. CDK Bootstrap Failed
-```bash
-# Error: "Policy contains invalid principals"
-# Solution:
-aws configure  # Reconfigure credentials
-cdk bootstrap --trust=ACCOUNT-ID
-```
-
-#### 2. Amplify Build Failed
-```bash
-# Check build logs
-aws amplify get-job --app-id [APP-ID] --branch-name main --job-id [JOB-ID]
-
-# Common fixes:
-# - Ensure environment variables are set
-# - Check package.json scripts
-# - Verify GitHub token permissions
-```
-
-#### 3. DynamoDB Throttling
-```bash
-# Check metrics
-aws cloudwatch get-metric-statistics \
-  --namespace AWS/DynamoDB \
-  --metric-name ReadThrottleEvents \
-  --dimensions Name=TableName,Value=jobseek-users-dev \
-  --start-time 2024-01-01T00:00:00Z \
-  --end-time 2024-01-02T00:00:00Z \
-  --period 3600 \
-  --statistics Sum
-```
-
-### Debug Commands
-
-```bash
-# View CloudFormation events
-aws cloudformation describe-stack-events \
-  --stack-name JobseekBackend-dev
-
-# Amplify deployment logs
-aws amplify list-jobs --app-id [APP-ID] --branch-name main
-
-# DynamoDB table details
-aws dynamodb describe-table --table-name jobseek-users-dev
-```
-
-## Monitoring & Maintenance
-
-### CloudWatch Dashboard
-
-Access metrics at: `https://console.aws.amazon.com/cloudwatch`
-
-**Key Metrics:**
-- DynamoDB read/write capacity
-- Amplify build success rate
-- API Gateway latency
-
-### Alarms
-
-**Critical Alarms (Production):**
-- DynamoDB throttles > 10
-- Amplify build success < 95%
-- API 5xx errors > 10 in 5 minutes
-
-### Log Analysis
-
-```bash
-# Export logs for analysis
-aws logs create-export-task \
-  --log-group-name /aws/amplify/jobseek-prod \
-  --from 1640995200000 \
-  --to 1641081600000 \
-  --destination jobseek-logs-export \
-  --destination-prefix lambda-errors
-```
-
-## Updating & Rollback
-
-### Update Application
-
-```bash
-# Update CDK code
-git pull origin main
-
-# Deploy updates
-pnpm deploy:dev
-
-# For production, review changes first
-cdk diff --all --context environment=prod
-pnpm deploy:prod
-```
-
-### Rollback Procedures
-
-```bash
-# Rollback Amplify to previous build
-aws amplify list-jobs --app-id [APP-ID] --branch-name main
-aws amplify start-job \
-  --app-id [APP-ID] \
-  --branch-name main \
-  --job-type RELEASE \
-  --commit-id [PREVIOUS-COMMIT]
-
-# Rollback CDK stack
-# Note: This may cause data loss - backup first!
-cdk destroy JobseekBackend-dev
-git checkout [previous-version]
-cdk deploy JobseekBackend-dev
-```
-
-## Cost Management
-
-### Estimate Costs
-
-```bash
-# View current costs
-aws ce get-cost-and-usage \
-  --time-period Start=2024-01-01,End=2024-01-31 \
-  --granularity MONTHLY \
-  --metrics "UnblendedCost" \
-  --filter file://cost-filter.json
-```
-
-### Cost Optimization
-
-1. **Development Environments**
-   - Destroy when not in use
-   - Minimize resource usage
-   - Disable monitoring
-
-2. **Production Optimization**
-   - Enable S3 lifecycle policies
-   - Use DynamoDB auto-scaling
-
-### Destroy Resources
-
-```bash
-# Destroy specific environment
-cdk destroy --all --context environment=dev
-
-# Clean up S3 buckets first
-aws s3 rm s3://jobseek-resumes-dev-ACCOUNT --recursive
-
-# Force destroy with cleanup
-pnpm cleanup:dev:force
-```
-
-## Security Best Practices
-
-### Secrets Rotation
-
-```bash
-# Rotate NextAuth secret
-openssl rand -base64 32  # Generate new secret
-pnpm secrets:prod        # Update in AWS
-
-# Rotate API keys
-# 1. Generate new keys in provider console
-# 2. Update secrets:
-aws secretsmanager update-secret \
-  --secret-id jobseek/wallcrawler-api-key \
-  --secret-string "new-api-key"
-```
-
-### Access Control
-
-```bash
-# Review IAM permissions
-aws iam list-roles --query "Roles[?contains(RoleName, 'Jobseek')]"
-
-# Enable MFA for production
-aws iam enable-mfa-device \
-  --user-name admin \
-  --serial-number arn:aws:iam::ACCOUNT:mfa/admin \
-  --authentication-code1 123456 \
-  --authentication-code2 789012
-```
-
-## Support & Resources
-
-- **AWS CDK Documentation**: https://docs.aws.amazon.com/cdk/
-- **Amplify Documentation**: https://docs.amplify.aws/
-- **Next.js Documentation**: https://nextjs.org/docs
-- **Repository Issues**: [GitHub Issues]
-- **Team Contact**: devops@jobseek.com
+With Amplify out of the loop the CloudFront + Lambda@Edge stack is now the source of truth. Continue using the deployment scripts locally until the CI pipeline rolls out, and remember to keep `.env.<env>` files in sync so Secrets Manager and Lambda environments stay aligned.

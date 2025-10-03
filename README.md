@@ -1,103 +1,95 @@
 # Jobseek
 
-Jobseek is a job search automation platform, designed to offload the repetitive nature of shifting through all the lame job slop on Linkedin, Monster, and other job boards, and help you find the jobs that are actually a good fit for you.
+Jobseek automates the repetitive parts of searching, qualifying, and applying to roles across major job boards. It relies on the [Wallcrawler](https://github.com/Volpestyle/wallcrawler) automation suite for headless browsing, session management, and scraping.
 
-## How?
+## Stack Overview
 
-- Jobseek leverages [Wallcrawler](https://github.com/Volpestyle/wallcrawler) for headless browser automation and session management across job boards.
+- **API server**: Node 20 + [Hono](https://hono.dev/) (`server/`) served with `tsx`
+- **Web client**: React 19 + TanStack Router + React Query + Shadcn UI on Vite (`src/`)
+- **Shared code**: Contexts, hooks, components, and Wallcrawler integrations living under `components/`, `contexts/`, `hooks/`, and `lib/`
+- **Infrastructure**: AWS resources defined with CDK (`cdk/`)
+- **Legacy Next.js app (removed)**: The App Router implementation has been deleted; the Vite client + Hono server now expose all APIs. Sign-in UI will move to a dedicated Hono/React flow next.
 
-- Packages
-  - `@wallcrawler/stagehand`: drives automated browsing, actions, and extraction in `lib/wallcrawler.server.ts`
-  - `@wallcrawler/sdk`: session retrieval, listing, and debug links in API routes
-- Local setup
-  - This repo references sibling packages via pnpm links:
-    - `@wallcrawler/sdk` → `../wallcrawler/packages/sdk-node`
-    - `@wallcrawler/components` → `../wallcrawler/packages/components`
-    - `@wallcrawler/stagehand` → `../wallcrawler/packages/stagehand`
-  - Clone the [Wallcrawler](https://github.com/Volpestyle/wallcrawler) repo adjacent to this directory so these links resolve:
-    - `…/web/wallcrawler` and `…/web/jobseek` should be siblings
-- Key API routes
-  - `POST /api/wallcrawler/search/start`: starts a search with Stagehand and returns `{ sessionId, debugUrl, jobs }`
-  - `POST /api/wallcrawler/search/stream`: server-sent events stream of search progress and results
-  - `GET|POST /api/wallcrawler/sessions`: lists active sessions filtered by the current user
-  - `GET /api/wallcrawler/sessions/[sessionId]`: returns session details and saved results (authz enforced)
-  - `POST /api/wallcrawler/search`: retrieves session status and debugger URLs (authz enforced)
-- Environment variables
-  - SDK: `WALLCRAWLER_API_URL`, `WALLCRAWLER_API_KEY`
-  - Stagehand: `WALLCRAWLER_PROJECT_ID`, `WALLCRAWLER_API_KEY`, `ANTHROPIC_API_KEY`
+## Migration Status (Next.js → Node + Hono)
 
-This is a Next.js application with AWS infrastructure managed via AWS CDK. This repository is a pnpm workspace containing:
+✅ React 19 client created in `src/` with TanStack Router + React Query skeleton
+✅ Vite dev/build flow with `/api` proxy to the Node server
+✅ Hono server now owns `/api/auth/*` via Auth.js core; anonymous cookie issuance lives alongside it
+✅ Wallcrawler search start/stream/session endpoints, job search results, saved jobs/searches, board preferences, resumes, applications, profiles, and migration API now run on Hono
+✅ React component layer no longer depends on Next.js runtime directives; everything now compiles cleanly under Vite + Hono
 
-- `@jobseek/app`: the Next.js 15 application (app router) and API routes
-- `@jobseek/cdk`: infrastructure-as-code for backend and app deployment
+⚠️ Still to migrate
 
-For deeper details (architecture, auth, deployment, rate limiting), see the documents in `docs/` linked below.
+- Polish the Auth.js-based sign-in/refresh UX and flesh out dedicated error handling on the new Hono endpoints
+- Wire the CloudFront/Lambda@Edge deployment into CI (current script is manual)
+- Expand automated tests around anonymous session migration and storage helpers now that everything lives outside the Next runtime
 
-## Quick start
+See `docs/ARCHITECTURE.md` for deeper context and the open migration checklist.
 
-- Install dependencies
-  ```bash
-  pnpm install
-  ```
-- Run the app locally
-  ```bash
-  pnpm dev
-  ```
-- Lint, build, and start
-  ```bash
-  pnpm lint
-  pnpm build
-  pnpm start
-  ```
+## Local Development
 
-Prerequisites: Node.js 20+ and pnpm installed. Environment variables and service configuration are covered in the deployment guide.
+1. Install dependencies (this repo expects the Wallcrawler monorepo adjacent to `jobseek` so pnpm links resolve):
+   ```bash
+   pnpm install
+   ```
+2. Start both the API server and Vite dev server with one command:
+   ```bash
+   pnpm dev
+   ```
+   This spawns the Hono backend on port 3000 and the Vite client on `http://localhost:5173`, with `/api/*` proxied to the backend.
 
-## Workspace layout
+   For a smooth local run, create a `.env.local` with the minimum auth and AWS stubs:
+   ```env
+   AUTH_SECRET=local-dev-secret
+   AUTH_REDIRECT_ALLOWLIST=http://localhost:5173
+   ANONYMOUS_JWT_SECRET=local-anon-secret
+   AWS_REGION=us-east-1
+   AWS_ACCESS_KEY_ID=local
+   AWS_SECRET_ACCESS_KEY=local
+   DYNAMODB_USERS_TABLE=jobseek-users-dev
+   DISABLE_RATE_LIMITS=true
+   # Optional: relax anonymous rate limits locally
+   # RATE_LIMIT_ANON_SESSION_MAX=500
+    ```
+   Replace any placeholder values with real credentials whenever you want to exercise the full stack (sign-in, rate limiting, DynamoDB persistence, etc.).
 
-- `app/` — Next.js app and API routes
-- `components/`, `hooks/`, `contexts/`, `lib/` — shared UI, hooks, context, utilities
-- `cdk/` — AWS CDK project (stacks, scripts, deployment helpers)
-- `docs/` — reference documentation
-- `public/`, `styles` (via `app/globals.css`) — assets and global styles
+Additional scripts:
 
-## Infrastructure and deployment (CDK)
+- `pnpm client:build` – build the Vite client
+- `pnpm client:preview` – preview the built client
+- `pnpm server:start` – run the Hono server without file watching
+- `pnpm lint` – lint the repository
+- `pnpm mermaid:generate` – render Mermaid diagrams in docs/mermaid
 
-Common commands are exposed at the root for convenience and delegate to `@jobseek/cdk`:
+## Workspace Layout
 
-- Synthesize and diff
-  ```bash
-  pnpm cdk:synth
-  pnpm cdk:diff
-  ```
-- Deploy backend (all environments)
-  ```bash
-  pnpm deploy:backend:dev
-  pnpm deploy:backend:staging
-  pnpm deploy:backend:prod
-  ```
-- Deploy Next.js hosting (all environments)
-  ```bash
-  pnpm deploy:nextjs:dev
-  pnpm deploy:nextjs:staging
-  pnpm deploy:nextjs:prod
-  ```
-
-You can also run any CDK scripts directly within the `cdk/` package:
-
-```bash
-pnpm --filter @jobseek/cdk deploy:dev
-pnpm --filter @jobseek/cdk deploy:staging
-pnpm --filter @jobseek/cdk deploy:prod
-```
-
-Environment-specific configuration lives under `cdk/config/` (`dev.json`, `staging.json`, `prod.json`). Secrets and additional setup steps are covered in the deployment guide.
+- `src/` — React 19 client entry point (`App`, routes, providers)
+- `server/` — Node + Hono server (now owns all APIs)
+- `components/`, `hooks/`, `contexts/`, `lib/` — shared UI and domain logic reused across runtimes
+- `cdk/` — AWS CDK stacks for infrastructure
+- `docs/` — reference documentation and migration notes
+- `public/` — static assets served by the client
 
 ## Documentation
 
-- Architecture overview — [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
-- Authentication architecture — [`docs/AUTH_ARCHITECTURE.md`](docs/AUTH_ARCHITECTURE.md)
-- OAuth setup — [`docs/OAUTH_SETUP.md`](docs/OAUTH_SETUP.md)
-- JWT token lifecycle — [`docs/jwt-token-lifecycle.md`](docs/jwt-token-lifecycle.md)
+- Architecture — [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- Auth architecture + migration notes — [`docs/AUTH_ARCHITECTURE.md`](docs/AUTH_ARCHITECTURE.md)
+- Deployment & environment setup — [`docs/DEPLOYMENT_GUIDE.md`](docs/DEPLOYMENT_GUIDE.md)
 - Rate limiting — [`docs/RATE_LIMITING.md`](docs/RATE_LIMITING.md)
-- Deployment guide — [`docs/DEPLOYMENT_GUIDE.md`](docs/DEPLOYMENT_GUIDE.md)
-- Architecture diagram — [`docs/architecture-diagram.png`](docs/architecture-diagram.png)
+- Anonymous token lifecycle — [`docs/JWT_TOKEN_LIFECYCLE.md`](docs/JWT_TOKEN_LIFECYCLE.md)
+
+
+
+## Wallcrawler Workspace Links
+
+This repo expects sibling packages via pnpm links:
+
+- `@wallcrawler/sdk` → `../wallcrawler/packages/sdk-node`
+- `@wallcrawler/components` → `../wallcrawler/packages/components`
+- `@wallcrawler/stagehand` → `../wallcrawler/packages/stagehand`
+
+Ensure the Wallcrawler repository lives alongside `jobseek` (e.g. `…/web/wallcrawler` and `…/web/jobseek`).
+
+## Next Steps
+
+The priority items for finishing the migration are called out in the docs. In short: wire up the Auth.js/Hono sign-in experience, finish cleaning up the client auth/storage layers, and update the CDK deployment to ship the Hono server + Vite client.

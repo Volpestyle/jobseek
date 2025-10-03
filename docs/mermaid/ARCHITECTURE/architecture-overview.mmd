@@ -1,0 +1,29 @@
+flowchart LR
+  subgraph Client
+    ReactApp["React 19 SPA"]
+  end
+
+  subgraph API["API Layer"]
+    HonoServer["Hono Node Server"]
+    AuthCore["Auth.js Core"]
+  end
+
+  subgraph Automation
+    Scheduler["EventBridge Scheduler"]
+    LambdaJob["Search Lambda"]
+    Stagehand["Wallcrawler Stagehand"]
+  end
+
+  subgraph Persistence
+    Dynamo[("DynamoDB")] 
+    S3[("S3 Resume Bucket")]
+  end
+
+  ReactApp -->|"REST / JSON"| HonoServer
+  HonoServer -->|"Session + OAuth"| AuthCore
+  HonoServer -->|"Token + Data"| ReactApp
+  HonoServer -->|"Trigger runs"| Stagehand
+  Scheduler --> LambdaJob --> Stagehand
+  Stagehand -->|"Job results"| Dynamo
+  HonoServer -->|"Query"| Dynamo
+  HonoServer -->|"Presigned URLs"| S3

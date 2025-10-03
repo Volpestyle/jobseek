@@ -1,0 +1,24 @@
+sequenceDiagram
+  participant U as Browser
+  participant Hook as useAnonymousSession
+  participant API as Hono Anonymous API
+  participant Store as DynamoDB
+
+  U->>Hook: Load application
+  Hook->>API: GET /api/auth/anonymous
+  API->>Store: Save refresh hash + TTL
+  API-->>Hook: Set cookies (access + refresh)
+
+  loop Protected requests
+    Hook->>API: Fetch /api/wallcrawler/... with cookies
+    API->>Hook: Refresh access cookie when valid
+  end
+
+  alt Access expired but refresh valid
+    Hook->>API: POST /api/auth/anonymous/refresh
+    API->>Store: Validate + rotate hash
+    API-->>Hook: New cookies
+  else Refresh invalid/expired
+    API-->>Hook: 401 Invalid refresh
+    Hook->>API: GET /api/auth/anonymous (start over)
+  end
