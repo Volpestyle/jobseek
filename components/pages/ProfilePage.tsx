@@ -1,5 +1,3 @@
-"use client";
-
 import React, { useState, useEffect } from "react";
 import {
   Card,
@@ -21,23 +19,16 @@ import {
   Plus,
   X,
   Save,
-  Edit,
   Linkedin,
   Github,
   Globe,
-  Mail,
-  Phone,
-  MapPin,
   Loader2,
 } from "lucide-react";
 import { useProfile } from "@/hooks/use-profile";
 import type { WorkExperience, Education } from "@/lib/db/dynamodb.service";
-import { useSession } from "next-auth/react";
-import Link from "next/link";
 
 export function ProfilePage() {
   const { profile, loading, error, updateProfile, displayName } = useProfile();
-  const { data: session, status } = useSession();
 
   // Form state
   const [formData, setFormData] = useState({

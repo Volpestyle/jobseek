@@ -1,5 +1,3 @@
-"use client";
-
 import * as React from "react";
 import * as TabsPrimitive from "@radix-ui/react-tabs";
 import { motion } from "motion/react";
@@ -41,11 +39,6 @@ function TabsList({
       ) as HTMLElement | null;
 
       if (activeTab) {
-        const style = getComputedStyle(listRef.current);
-        const paddingLeft = parseFloat(style.paddingLeft);
-        const paddingTop = parseFloat(style.paddingTop);
-        const paddingBottom = parseFloat(style.paddingBottom);
-
         const x = activeTab.offsetLeft;
         const y = activeTab.offsetTop;
         const width = activeTab.offsetWidth;

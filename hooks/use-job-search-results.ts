@@ -1,108 +1,104 @@
-"use client";
-
-import { useState, useEffect, useCallback } from "react";
-import { useStorage } from "@/contexts/auth-context";
+import { useMemo } from "react";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { useAuth, useStorage } from "@/contexts/auth-context";
 import { JobSearchResult } from "@/lib/storage/storage.service";
 
 export function useJobSearchResults() {
+  const { userId, isAuthenticated } = useAuth();
   const { storage, isLoading: storageLoading } = useStorage();
-  const [results, setResults] = useState<JobSearchResult[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
-  // Load all job search results
-  const loadResults = useCallback(async () => {
-    if (!storage || storageLoading) return;
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const searchResults = await storage.getAllJobSearchResults();
-      setResults(searchResults);
-    } catch (err) {
-      console.error("Failed to load job search results:", err);
-      setError(err instanceof Error ? err.message : "Failed to load results");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [storage, storageLoading]);
-
-  useEffect(() => {
-    loadResults();
-  }, [loadResults]);
-
-  // Get results for a specific session
-  const getSessionResults = useCallback(
-    async (searchId: string) => {
-      if (!storage) return null;
-
-      try {
-        // Since getJobSearchResults was removed, we need to filter from all results
-        const allResults = await storage.getAllJobSearchResults();
-        return allResults.find(r => r.searchId === searchId) || null;
-      } catch (err) {
-        console.error("Failed to get session results:", err);
-        return null;
-      }
-    },
-    [storage]
+  const queryKey = useMemo<(string | undefined)[]>(
+    () => ["jobSearchResults", isAuthenticated ? userId ?? "authenticated" : "anonymous"],
+    [isAuthenticated, userId]
   );
 
-  // Save new job search results
-  const saveResults = useCallback(
-    async (searchResult: Omit<JobSearchResult, "userId">) => {
-      if (!storage) return;
-
-      try {
-        const saved = await storage.saveJobSearchResults(searchResult);
-        // Update local state
-        setResults((prev) => [
-          ...prev.filter((r) => r.searchId !== saved.searchId),
-          saved,
-        ]);
-        return saved;
-      } catch (err) {
-        console.error("Failed to save search results:", err);
-        throw err;
+  const resultsQuery = useQuery<JobSearchResult[]>({
+    queryKey,
+    enabled: !!storage && !storageLoading,
+    queryFn: async () => {
+      if (!storage) {
+        return [];
       }
+      return storage.getAllJobSearchResults();
     },
-    [storage]
-  );
+  });
 
-  // Update existing results (e.g., when more jobs are found)
-  const updateResults = useCallback(
-    async (
-      searchId: string,
-      updates: Partial<Omit<JobSearchResult, "userId">>
+  const saveResultsMutation = useMutation({
+    mutationFn: async (searchResult: Omit<JobSearchResult, "userId">) => {
+      if (!storage) {
+        throw new Error("Storage not initialized");
+      }
+      return storage.saveJobSearchResults(searchResult);
+    },
+    onSuccess: (saved) => {
+      queryClient.setQueryData<JobSearchResult[] | undefined>(queryKey, (prev) => {
+        const existing = prev ?? [];
+        const withoutCurrent = existing.filter((r) => r.searchId !== saved.searchId);
+        return [...withoutCurrent, saved];
+      });
+    },
+  });
+
+  const updateResultsMutation = useMutation({
+    mutationFn: async (
+      params: {
+        searchId: string;
+        updates: Partial<Omit<JobSearchResult, "userId">>;
+      }
     ) => {
-      if (!storage) return;
-
-      try {
-        const updated = await storage.updateJobSearchResults(
-          searchId,
-          updates
-        );
-        // Update local state
-        setResults((prev) =>
-          prev.map((r) => (r.searchId === searchId ? updated : r))
-        );
-        return updated;
-      } catch (err) {
-        console.error("Failed to update search results:", err);
-        throw err;
+      if (!storage) {
+        throw new Error("Storage not initialized");
       }
+      const { searchId, updates } = params;
+      return storage.updateJobSearchResults(searchId, updates);
     },
-    [storage]
-  );
+    onSuccess: (updated) => {
+      queryClient.setQueryData<JobSearchResult[] | undefined>(queryKey, (prev) =>
+        (prev ?? []).map((r) => (r.searchId === updated.searchId ? updated : r))
+      );
+    },
+  });
+
+  const results = resultsQuery.data ?? [];
+
+  const getSessionResults = (searchId: string) =>
+    results.find((result) => result.searchId === searchId) || null;
+
+  const saveResults = async (searchResult: Omit<JobSearchResult, "userId">) => {
+    return saveResultsMutation.mutateAsync(searchResult);
+  };
+
+  const updateResults = async (
+    searchId: string,
+    updates: Partial<Omit<JobSearchResult, "userId">>
+  ) => {
+    return updateResultsMutation.mutateAsync({ searchId, updates });
+  };
+
+  const refreshResults = async () => {
+    await queryClient.invalidateQueries({ queryKey });
+  };
+
+  const error = resultsQuery.error
+    ? resultsQuery.error instanceof Error
+      ? resultsQuery.error.message
+      : "Failed to load job search results"
+    : null;
+
+  const isLoading = storageLoading || resultsQuery.isLoading;
 
   return {
     results,
-    isLoading: isLoading || storageLoading,
+    isLoading,
     error,
     getSessionResults,
     saveResults,
     updateResults,
-    refreshResults: loadResults,
+    refreshResults,
   };
 }

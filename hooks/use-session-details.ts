@@ -1,9 +1,8 @@
-"use client";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/contexts/auth-context";
 
-import { useState, useEffect, useRef } from "react";
-import { useSession } from "next-auth/react";
-
-interface SessionDetails {
+export interface SessionDetails {
   id: string;
   status: "RUNNING" | "COMPLETED" | "ERROR" | "TIMED_OUT";
   createdAt: string;
@@ -15,7 +14,7 @@ interface SessionDetails {
   connectUrl?: string;
 }
 
-interface JobResult {
+export interface SessionJobResult {
   jobId: string;
   title: string;
   company: string;
@@ -27,7 +26,7 @@ interface JobResult {
   postedDate?: string;
 }
 
-interface ActionLog {
+export interface SessionActionLog {
   id: string;
   sessionId: string;
   timestamp: string;
@@ -45,36 +44,70 @@ interface ActionLog {
   status: "pending" | "success" | "error";
 }
 
+interface SessionQueryData {
+  session: SessionDetails | null;
+  jobs: SessionJobResult[];
+  actionLogs: SessionActionLog[];
+  totalJobs: number;
+}
+
+const INITIAL_SESSION_DATA: SessionQueryData = {
+  session: null,
+  jobs: [],
+  actionLogs: [],
+  totalJobs: 0,
+};
+
 export function useSessionDetails(sessionId: string) {
-  const { data: authSession } = useSession();
-  const [session, setSession] = useState<SessionDetails | null>(null);
-  const [jobs, setJobs] = useState<JobResult[]>([]);
-  const [actionLogs, setActionLogs] = useState<ActionLog[]>([]);
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const queryKey = useMemo(() => ["sessionDetails", sessionId], [sessionId]);
+
+  const { data: sessionData = INITIAL_SESSION_DATA } = useQuery<SessionQueryData>(
+    {
+      queryKey,
+      initialData: INITIAL_SESSION_DATA,
+      enabled: false,
+      // No backing REST endpoint yet; SSE populates the cache.
+      queryFn: async () => INITIAL_SESSION_DATA,
+    }
+  );
+
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [totalJobs, setTotalJobs] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 20;
+
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttemptsRef = useRef(0);
+  const connectSSERef = useRef<() => void>(() => {});
+
+  const resetSessionData = useCallback(() => {
+    queryClient.setQueryData<SessionQueryData>(queryKey, INITIAL_SESSION_DATA);
+  }, [queryClient, queryKey]);
 
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId) {
+      resetSessionData();
+      setIsLoading(false);
+      return;
+    }
+
+    resetSessionData();
+    setIsLoading(true);
+    setError(null);
+    setCurrentPage(1);
 
     const connectSSE = () => {
-      // Clean up any existing connection
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
+        eventSourceRef.current = null;
       }
 
-      // Build URL with auth headers if needed
       const url = `/api/wallcrawler/sessions/${sessionId}/stream`;
-
-      // For anonymous users, add token as query param since EventSource doesn't support headers
       const anonToken = localStorage.getItem("anonToken");
-      const finalUrl =
-        anonToken && !authSession?.user ? `${url}?anonToken=${anonToken}` : url;
+      const finalUrl = anonToken && !user ? `${url}?anonToken=${anonToken}` : url;
 
       const eventSource = new EventSource(finalUrl);
       eventSourceRef.current = eventSource;
@@ -92,31 +125,55 @@ export function useSessionDetails(sessionId: string) {
           switch (message.type) {
             case "session":
               if (message.data) {
-                setSession(message.data);
+                queryClient.setQueryData<SessionQueryData>(queryKey, (prev) => {
+                  const base = prev ?? INITIAL_SESSION_DATA;
+                  return {
+                    ...base,
+                    session: message.data,
+                  };
+                });
               }
               break;
             case "jobs":
-              setJobs(message.data);
+            case "jobs-update":
+              queryClient.setQueryData<SessionQueryData>(queryKey, (prev) => {
+                const base = prev ?? INITIAL_SESSION_DATA;
+                return {
+                  ...base,
+                  jobs: message.data ?? [],
+                };
+              });
               break;
             case "totalJobs":
-              setTotalJobs(message.data);
+            case "totalJobs-update":
+              queryClient.setQueryData<SessionQueryData>(queryKey, (prev) => {
+                const base = prev ?? INITIAL_SESSION_DATA;
+                return {
+                  ...base,
+                  totalJobs: message.data ?? 0,
+                };
+              });
               break;
             case "logs-history":
-              setActionLogs(message.data);
+              queryClient.setQueryData<SessionQueryData>(queryKey, (prev) => {
+                const base = prev ?? INITIAL_SESSION_DATA;
+                return {
+                  ...base,
+                  actionLogs: message.data ?? [],
+                };
+              });
               break;
             case "log":
-              // Append single new log
-              setActionLogs((prev) => [...prev, message.data]);
-              break;
-            case "jobs-update":
-              // Replace jobs with updated list
-              setJobs(message.data);
-              break;
-            case "totalJobs-update":
-              setTotalJobs(message.data);
+              queryClient.setQueryData<SessionQueryData>(queryKey, (prev) => {
+                const base = prev ?? INITIAL_SESSION_DATA;
+                return {
+                  ...base,
+                  actionLogs: [...base.actionLogs, message.data],
+                };
+              });
               break;
             case "error":
-              setError(message.data.message);
+              setError(message.data.message ?? "Session error");
               if (message.data.message === "Unauthorized") {
                 eventSource.close();
               }
@@ -131,14 +188,12 @@ export function useSessionDetails(sessionId: string) {
         console.error("SSE error:", err);
         eventSource.close();
 
-        // Implement exponential backoff for reconnection
         if (reconnectAttemptsRef.current < 5) {
           const delay = Math.min(
             1000 * Math.pow(2, reconnectAttemptsRef.current),
             30000
           );
           setError(`Connection lost. Reconnecting in ${delay / 1000}s...`);
-
           reconnectTimeoutRef.current = setTimeout(() => {
             reconnectAttemptsRef.current++;
             connectSSE();
@@ -150,9 +205,9 @@ export function useSessionDetails(sessionId: string) {
       };
     };
 
+    connectSSERef.current = connectSSE;
     connectSSE();
 
-    // Cleanup on unmount or sessionId change
     return () => {
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
@@ -163,43 +218,30 @@ export function useSessionDetails(sessionId: string) {
         reconnectTimeoutRef.current = null;
       }
     };
-  }, [sessionId, authSession?.user]);
+  }, [sessionId, user, queryClient, queryKey, resetSessionData]);
 
-  // No refresh function needed - SSE is always live
   const refreshSession = () => {
-    // Reconnect SSE if needed
-    if (eventSourceRef.current?.readyState === EventSource.CLOSED) {
-      reconnectAttemptsRef.current = 0;
-      const connectSSE = () => {
-        const url = `/api/wallcrawler/sessions/${sessionId}/stream`;
-        const anonToken = localStorage.getItem("anonToken");
-        const finalUrl =
-          anonToken && !authSession?.user
-            ? `${url}?anonToken=${anonToken}`
-            : url;
-
-        const eventSource = new EventSource(finalUrl);
-        eventSourceRef.current = eventSource;
-        // ... rest of the connection logic from above
-      };
-      connectSSE();
+    reconnectAttemptsRef.current = 0;
+    setIsLoading(true);
+    setError(null);
+    if (connectSSERef.current) {
+      connectSSERef.current();
     }
   };
 
-  // Pagination happens client-side
-  const paginatedJobs = jobs.slice(
+  const paginatedJobs = sessionData.jobs.slice(
     (currentPage - 1) * pageSize,
     currentPage * pageSize
   );
 
   return {
-    session,
+    session: sessionData.session,
     jobs: paginatedJobs,
-    actionLogs,
+    actionLogs: sessionData.actionLogs,
     isLoading,
     error,
     refreshSession,
-    totalJobs,
+    totalJobs: sessionData.totalJobs,
     currentPage,
     setCurrentPage,
     pageSize,

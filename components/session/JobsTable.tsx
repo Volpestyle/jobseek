@@ -1,5 +1,3 @@
-"use client";
-
 import { useState } from "react";
 import {
   Table,
@@ -19,7 +17,6 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ExternalLink, MapPin, DollarSign, Building2 } from "lucide-react";
@@ -27,7 +24,7 @@ import { useSavedJobs } from "@/hooks/use-saved-jobs";
 import { AnimatedSaveButton } from "@/components/ui/animated-save-button";
 import { toast } from "sonner";
 
-interface Job {
+export interface SessionJob {
   jobId: string;
   title: string;
   company: string;
@@ -39,8 +36,8 @@ interface Job {
   postedDate?: string;
 }
 
-interface JobsTableProps {
-  jobs: Job[];
+export interface JobsTableProps {
+  jobs: SessionJob[];
   totalJobs: number;
   currentPage: number;
   pageSize: number;
@@ -79,7 +76,7 @@ export function JobsTable({
     }
   };
 
-  const handleSaveJob = async (job: Job) => {
+  const handleSaveJob = async (job: SessionJob) => {
     try {
       await saveJob({
         jobId: job.jobId,

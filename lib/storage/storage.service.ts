@@ -25,24 +25,12 @@ class UnifiedStorageService {
     return this.localService!;
   }
 
-  private getService(isAuthenticated: boolean): StorageService {
-    return isAuthenticated ? this.dynamoService : this.getLocalService();
-  }
-
-  // Client-side only method for components
   async getStorageForUser(userId: string | null): Promise<StorageService> {
     const isAuthenticated = !!userId && !userId.startsWith("anon_");
-    return this.getService(isAuthenticated);
-  }
-
-  // Server-side method for API routes
-  async getStorageForSession(session: any): Promise<StorageService | null> {
-    if (session?.user?.id) {
-      return this.dynamoService;
+    if (!isAuthenticated) {
+      return this.getLocalService();
     }
-    // For anonymous users in API routes, return null
-    // The API will handle this appropriately
-    return null;
+    return this.dynamoService;
   }
 
   // Migration helper - now delegates to the unified migration service

@@ -1,0 +1,1 @@
+var t=(o,e)=>()=>(e||o((e={exports:{}}).exports,e),e.exports);var u=t(r=>{Object.defineProperty(r,"__esModule",{value:!0});r.BrowserViewport=void 0;var i=require("./BrowserViewport");Object.defineProperty(r,"BrowserViewport",{enumerable:!0,get:function(){return i.BrowserViewport}})});export default u();

@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
-import { motion, useMotionValue, useTransform } from "motion/react";
+import { motion, useMotionValue } from "motion/react";
 
 import { cn } from "./utils";
 
@@ -72,6 +72,7 @@ function Button({
   const [isHovered, setIsHovered] = React.useState(false);
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
+  const [hoverKey, setHoverKey] = React.useState(0);
 
   if (asChild) {
     return (
@@ -137,17 +138,6 @@ function Button({
       scale: getHoverScale(),
     },
   };
-
-  const overlayVariants = {
-    initial: {
-      scale: 0,
-    },
-    hover: {
-      scale: 2.5,
-    },
-  };
-
-  const [hoverKey, setHoverKey] = React.useState(0);
 
   const handleMouseEnterWithKey = (e: React.MouseEvent<HTMLButtonElement>) => {
     handleMouseEnter(e);

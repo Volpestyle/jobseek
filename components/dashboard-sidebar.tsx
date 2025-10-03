@@ -1,8 +1,5 @@
-"use client";
-
 import * as React from "react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   MotionSidebar,
   SidebarContent,
@@ -28,11 +25,17 @@ import {
   LogIn,
   UserCircle,
 } from "lucide-react";
-import { signOut } from "next-auth/react";
 import { useAuth } from "@/contexts/auth-context";
-import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "motion/react";
 import { useSidebar } from "@/components/ui/sidebar";
+
+type DashboardRoutePath =
+  | "/dashboard"
+  | "/dashboard/job-search"
+  | "/dashboard/active-searches"
+  | "/dashboard/job-management"
+  | "/dashboard/profile"
+  | "/dashboard/settings";
 
 interface DashboardSidebarProps {
   user: {
@@ -43,9 +46,10 @@ interface DashboardSidebarProps {
 }
 
 export function DashboardSidebar({ user }: DashboardSidebarProps) {
-  const pathname = usePathname();
-  const { isAuthenticated } = useAuth();
-  const router = useRouter();
+  const { location } = useRouterState();
+  const pathname = location.pathname;
+  const { isAuthenticated, signOut } = useAuth();
+  const navigate = useNavigate();
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
   const [hasInitialized, setHasInitialized] = React.useState(false);
@@ -54,7 +58,13 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
     setHasInitialized(true);
   }, []);
 
-  const menuItems = [
+  const menuItems: Array<{
+    id: string;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    href: DashboardRoutePath;
+    badge?: number;
+  }> = [
     { id: "overview", label: "Overview", icon: Home, href: "/dashboard" },
     {
       id: "job-search",
@@ -85,38 +95,19 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
   ];
 
   const handleSignOut = async () => {
-    await signOut({ callbackUrl: "/" });
+    await signOut();
   };
 
   const handleSignIn = () => {
-    router.push("/auth/signin");
+    void navigate({ to: "/auth/signin" as const });
   };
 
   // Animation variants for consistent timing
-  const textVariants = {
-    expanded: {
-      opacity: 1,
-      x: 0,
-      transition: {
-        opacity: { duration: 0.3, delay: 0.1 },
-        x: { duration: 0.3, ease: "easeOut" },
-      },
-    },
-    collapsed: {
-      opacity: 0,
-      x: -10,
-      transition: {
-        opacity: { duration: 0.2 },
-        x: { duration: 0.2, ease: "easeIn" },
-      },
-    },
-  };
-
   return (
     <MotionSidebar variant="sidebar" collapsible="icon" side="left">
       <SidebarHeader>
         <Link
-          href="/dashboard"
+          to="/dashboard"
           className="relative flex items-center px-2 py-1"
         >
           <motion.div className="flex items-center w-full justify-start">
@@ -172,7 +163,7 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
 
       <SidebarContent>
         <SidebarMenu>
-          {menuItems.map((item, index) => (
+          {menuItems.map((item) => (
             <SidebarMenuItem key={item.id}>
               <Button
                 variant="ghost"
@@ -180,10 +171,10 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
                 centerHover={isCollapsed}
                 className={cn(
                   "w-full justify-start h-8 px-2",
-                  pathname === item.href &&
+              pathname === item.href &&
                     "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
                 )}
-                onClick={() => router.push(item.href)}
+                onClick={() => navigate({ to: item.href })}
               >
                 <div className="flex items-center w-full relative">
                   {/* Icon container - no animation, always centered */}

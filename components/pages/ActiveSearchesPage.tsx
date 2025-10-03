@@ -1,51 +1,23 @@
-"use client";
-
-import React, { useState, useEffect } from "react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "../ui/card";
+import React, { useState, useEffect, useCallback } from "react";
+import { Card, CardContent } from "../ui/card";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { Progress } from "../ui/progress";
-import { Avatar, AvatarFallback } from "../ui/avatar";
-import {
-  PlayCircle,
-  Pause,
-  Square,
-  Eye,
-  MoreHorizontal,
-  Clock,
-  MapPin,
-  Briefcase,
-  TrendingUp,
-  Search,
-} from "lucide-react";
-import { useSession } from "next-auth/react";
+import { PlayCircle, Pause, Square, Eye, Clock, MapPin, Briefcase, TrendingUp, Search } from "lucide-react";
 import { useAnonymousSession } from "@/hooks/use-anonymous-session";
-import { useRouter } from "next/navigation";
+import type { AnonymousSessionDetails } from "@/hooks/use-anonymous-session";
+import { useNavigate } from "@tanstack/react-router";
 import { ErrorAlert } from "../ui/error-alert";
 
 export function ActiveSearchesPage() {
-  const [sessions, setSessions] = useState<any[]>([]);
+  const [sessions, setSessions] = useState<AnonymousSessionDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const { data: authSession } = useSession();
-  const { listSessions, anonymousId, isInitialized } = useAnonymousSession();
-  const router = useRouter();
+  const { listSessions, isInitialized } = useAnonymousSession();
+  const navigate = useNavigate();
 
-  useEffect(() => {
-    // Only fetch sessions once initialization is complete
-    if (isInitialized) {
-      fetchSessions();
-    }
-  }, [isInitialized]);
-
-  const fetchSessions = async () => {
+  const fetchSessions = useCallback(async () => {
     try {
       setLoading(true);
       const sessionList = await listSessions();
@@ -56,7 +28,14 @@ export function ActiveSearchesPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [listSessions]);
+
+  useEffect(() => {
+    // Only fetch sessions once initialization is complete
+    if (isInitialized) {
+      void fetchSessions();
+    }
+  }, [isInitialized, fetchSessions]);
 
   const mockActiveSearches = [
     {
@@ -182,7 +161,7 @@ export function ActiveSearchesPage() {
             Monitor and manage your running job search sessions.
           </p>
         </div>
-        <Button onClick={() => router.push("/dashboard/job-search")}>
+        <Button onClick={() => navigate({ to: "/dashboard/job-search" })}>
           <Search className="h-4 w-4 mr-2" />
           New Search
         </Button>
@@ -326,7 +305,10 @@ export function ActiveSearchesPage() {
                   variant="outline"
                   className="flex-1"
                   onClick={() =>
-                    router.push(`/dashboard/active-searches/${search.id}`)
+                    navigate({
+                      to: "/dashboard/active-searches/$sessionId",
+                      params: { sessionId: search.id },
+                    })
                   }
                 >
                   <Eye className="h-3 w-3 mr-1" />
