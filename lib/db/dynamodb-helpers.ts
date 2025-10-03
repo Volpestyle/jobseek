@@ -23,17 +23,17 @@ export function createTimestamps(includeCreatedAt = false): {
  * Automatically handles reserved keywords and generates attribute names/values
  */
 export function buildUpdateExpression(
-  updates: Record<string, any>,
+  updates: Record<string, unknown>,
   excludeKeys: string[] = []
 ): {
   UpdateExpression: string;
   ExpressionAttributeNames: Record<string, string>;
-  ExpressionAttributeValues: Record<string, any>;
+  ExpressionAttributeValues: Record<string, unknown>;
 } {
   const updateParts: string[] = [];
   const removeKeys: string[] = [];
   const expressionAttributeNames: Record<string, string> = {};
-  const expressionAttributeValues: Record<string, any> = {};
+  const expressionAttributeValues: Record<string, unknown> = {};
 
   Object.entries(updates).forEach(([key, value]) => {
     if (excludeKeys.includes(key)) return;
@@ -71,7 +71,7 @@ export function buildUpdateExpression(
 export async function atomicUpdate<T>(
   docClient: DynamoDBDocumentClient,
   tableName: string,
-  key: Record<string, any>,
+  key: Record<string, unknown>,
   updates: Partial<T>,
   options?: {
     conditionExpression?: string;
@@ -105,6 +105,9 @@ export async function atomicUpdate<T>(
   });
 
   const response = await docClient.send(command);
+  if (!response.Attributes) {
+    throw new Error("DynamoDB update did not return attributes");
+  }
   return response.Attributes as T;
 }
 
@@ -116,16 +119,16 @@ export async function withRetry<T>(
   maxRetries = 3,
   baseDelay = 100
 ): Promise<T> {
-  let lastError: Error | undefined;
+  let lastError: unknown;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       return await operation();
-    } catch (error: any) {
+    } catch (error) {
       lastError = error;
 
       // Don't retry validation errors
-      if (error.name === "ValidationException") {
+      if (getErrorName(error) === "ValidationException") {
         throw error;
       }
 
@@ -138,7 +141,8 @@ export async function withRetry<T>(
         "InternalServerError",
       ];
 
-      if (!retryableErrors.includes(error.name) || attempt === maxRetries) {
+      const errorName = getErrorName(error);
+      if (!retryableErrors.includes(errorName) || attempt === maxRetries) {
         throw error;
       }
 
@@ -148,7 +152,10 @@ export async function withRetry<T>(
     }
   }
 
-  throw lastError;
+  if (lastError instanceof Error) {
+    throw lastError;
+  }
+  throw new Error("Operation failed after retries");
 }
 
 /**
@@ -157,7 +164,10 @@ export async function withRetry<T>(
 export async function batchWriteItems(
   docClient: DynamoDBDocumentClient,
   tableName: string,
-  items: Array<{ PutRequest?: { Item: any }; DeleteRequest?: { Key: any } }>,
+  items: Array<{
+    PutRequest?: { Item: Record<string, unknown> };
+    DeleteRequest?: { Key: Record<string, unknown> };
+  }>,
   chunkSize = 25
 ): Promise<void> {
   const chunks = [];
@@ -179,7 +189,14 @@ export async function batchWriteItems(
       const unprocessedItems = response.UnprocessedItems?.[tableName];
       if (unprocessedItems && unprocessedItems.length > 0) {
         // Retry unprocessed items
-        await batchWriteItems(docClient, tableName, unprocessedItems);
+        await batchWriteItems(
+          docClient,
+          tableName,
+          unprocessedItems as Array<{
+            PutRequest?: { Item: Record<string, unknown> };
+            DeleteRequest?: { Key: Record<string, unknown> };
+          }>
+        );
       }
     })
   );
@@ -193,9 +210,9 @@ export async function batchWriteItems(
 export async function batchGetItems(
   docClient: DynamoDBDocumentClient,
   tableName: string,
-  keys: Array<Record<string, any>>,
+  keys: Array<Record<string, unknown>>,
   chunkSize = 100
-): Promise<any[]> {
+): Promise<Array<Record<string, unknown>>> {
   const chunks = [];
   for (let i = 0; i < keys.length; i += chunkSize) {
     chunks.push(keys.slice(i, i + chunkSize));
@@ -221,15 +238,17 @@ export async function batchGetItems(
           const unprocessedItems = await batchGetItems(
             docClient,
             tableName,
-            unprocessedData.Keys
+            unprocessedData.Keys as Array<Record<string, unknown>>
           );
-          return [
-            ...(response.Responses?.[tableName] || []),
-            ...unprocessedItems,
-          ];
+          const responses = (response.Responses?.[tableName] ?? []) as Array<
+            Record<string, unknown>
+          >;
+          return [...responses, ...unprocessedItems];
         }
 
-        return response.Responses?.[tableName] || [];
+        return (response.Responses?.[tableName] ?? []) as Array<
+          Record<string, unknown>
+        >;
       })
     )
   );
@@ -241,9 +260,17 @@ export async function batchGetItems(
  * Type guard for DynamoDB items
  */
 export function isValidItem<T>(
-  item: any,
+  item: unknown,
   requiredFields: (keyof T)[]
 ): item is T {
   if (!item || typeof item !== "object") return false;
   return requiredFields.every((field) => field in item);
+}
+
+function getErrorName(error: unknown): string {
+  if (typeof error === "object" && error && "name" in error) {
+    const name = (error as { name?: unknown }).name;
+    return typeof name === "string" ? name : "";
+  }
+  return "";
 }

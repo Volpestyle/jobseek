@@ -2,7 +2,6 @@ import { Stagehand } from "@wallcrawler/stagehand";
 import { z } from "zod";
 import { DEFAULT_JOB_BOARDS } from "./constants/default-job-boards";
 import { dynamodbService } from "./db/dynamodb.service";
-import { localStorageService } from "./storage/local-storage.service";
 import { actionLogEmitter } from "./events/action-logs";
 import type { LogLine } from "@wallcrawler/stagehand/types/log";
 
@@ -538,7 +537,7 @@ export class WallcrawlerService {
       });
       
       // Extract jobs with intelligent pagination/scrolling
-      let allJobs: any[] = [];
+      let allJobs: JobResult[] = [];
       let noNewJobsCount = 0;
       const MAX_NO_NEW_JOBS = 3;  // Stop after 3 attempts with no new jobs
       const MAX_TOTAL_JOBS = 100; // Reasonable limit
@@ -548,7 +547,7 @@ export class WallcrawlerService {
         await page.waitForTimeout(2000);
         
         // Extract all currently visible jobs
-        const result = await page.extract({
+        const result = await page.extract<JobListingsExtractResult>({
           instruction: "Extract all visible job listings on the page",
           schema: jobListingsSchema
         });
