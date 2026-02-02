@@ -1,9 +1,0 @@
-#!/bin/sh
-
-set -euo pipefail
-
-echo "Running prettier check..."
-pnpm format:check
-
-echo "Running eslint..."
-pnpm lint
