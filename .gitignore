@@ -19,3 +19,5 @@ data/
 # Misc
 .DS_Store
 *.pem
+scripts/__pycache__/
+tsconfig.tsbuildinfo
