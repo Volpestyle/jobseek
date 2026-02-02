@@ -1,0 +1,52 @@
+[
+  {
+    "key": "skills",
+    "type": "array",
+    "description": "Hard and soft skills explicitly mentioned"
+  },
+  {
+    "key": "tech_stack",
+    "type": "array",
+    "description": "Technologies, languages, frameworks, tools, or platforms"
+  },
+  {
+    "key": "years_experience",
+    "type": "string",
+    "description": "Years of experience required (e.g., '3+ years')"
+  },
+  {
+    "key": "education",
+    "type": "string",
+    "description": "Education requirements (degrees, fields, or equivalent)"
+  },
+  {
+    "key": "responsibilities",
+    "type": "array",
+    "description": "Key responsibilities (short phrases)"
+  },
+  {
+    "key": "requirements",
+    "type": "array",
+    "description": "Must-have requirements (short phrases)"
+  },
+  {
+    "key": "seniority",
+    "type": "string",
+    "description": "Seniority level (e.g., junior, mid, senior, staff)"
+  },
+  {
+    "key": "employment_type",
+    "type": "string",
+    "description": "Employment type (full-time, contract, internship, etc.)"
+  },
+  {
+    "key": "location_type",
+    "type": "string",
+    "description": "Location type (remote, hybrid, onsite)"
+  },
+  {
+    "key": "salary",
+    "type": "string",
+    "description": "Compensation mentioned in description"
+  }
+]

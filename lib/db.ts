@@ -33,6 +33,15 @@ db.exec(`
     scraped_at TEXT NOT NULL,
     logs TEXT
   );
+
+  CREATE TABLE IF NOT EXISTS chat_preferences (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    question TEXT NOT NULL,
+    answer TEXT NOT NULL,
+    category TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
 `);
 
 export interface Preferences {
@@ -193,6 +202,128 @@ export function saveScrape(
 
 export function deleteScrape(id: number): boolean {
   const result = db.prepare("DELETE FROM scrapes WHERE id = ?").run(id);
+  return result.changes > 0;
+}
+
+export interface Job {
+  title: string;
+  company: string;
+  location: string;
+  link: string;
+  salary: string | null;
+  posted: string | null;
+  description?: string | null;
+  summary?: string | null;
+  extracted?: Record<string, string | string[] | null> | null;
+}
+
+export interface AccumulatedJobsResult {
+  jobs: Job[];
+  runIds: number[];
+  totalBeforeDedup: number;
+  dateRange: { from: string; to: string };
+}
+
+export function getAccumulatedJobs(count: number | "all"): AccumulatedJobsResult {
+  const query =
+    count === "all"
+      ? "SELECT id, jobs, scraped_at FROM scrapes ORDER BY scraped_at DESC"
+      : "SELECT id, jobs, scraped_at FROM scrapes ORDER BY scraped_at DESC LIMIT ?";
+
+  const rows =
+    count === "all"
+      ? (db.prepare(query).all() as { id: number; jobs: string; scraped_at: string }[])
+      : (db.prepare(query).all(count) as { id: number; jobs: string; scraped_at: string }[]);
+
+  if (rows.length === 0) {
+    return {
+      jobs: [],
+      runIds: [],
+      totalBeforeDedup: 0,
+      dateRange: { from: "", to: "" },
+    };
+  }
+
+  const runIds: number[] = [];
+  const allJobs: Job[] = [];
+  const seenLinks = new Set<string>();
+
+  for (const row of rows) {
+    runIds.push(row.id);
+    const jobs = JSON.parse(row.jobs) as Job[];
+    for (const job of jobs) {
+      allJobs.push(job);
+    }
+  }
+
+  const totalBeforeDedup = allJobs.length;
+
+  // Deduplicate by link URL (keep first occurrence - most recent)
+  const dedupedJobs: Job[] = [];
+  for (const job of allJobs) {
+    if (!seenLinks.has(job.link)) {
+      seenLinks.add(job.link);
+      dedupedJobs.push(job);
+    }
+  }
+
+  // Date range (oldest to newest scraped_at)
+  const dates = rows.map((r) => r.scraped_at);
+  const from = dates[dates.length - 1] || "";
+  const to = dates[0] || "";
+
+  return {
+    jobs: dedupedJobs,
+    runIds,
+    totalBeforeDedup,
+    dateRange: { from, to },
+  };
+}
+
+// Chat preferences functions
+export interface ChatPreference {
+  id: number;
+  question: string;
+  answer: string;
+  category: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export function getChatPreferences(): ChatPreference[] {
+  const rows = db
+    .prepare("SELECT * FROM chat_preferences ORDER BY updated_at DESC")
+    .all() as ChatPreference[];
+  return rows;
+}
+
+export function saveChatPreference(
+  question: string,
+  answer: string,
+  category: string | null
+): number {
+  const now = new Date().toISOString();
+  const stmt = db.prepare(`
+    INSERT INTO chat_preferences (question, answer, category, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?)
+  `);
+  const result = stmt.run(question, answer, category, now, now);
+  return result.lastInsertRowid as number;
+}
+
+export function updateChatPreference(
+  id: number,
+  answer: string
+): boolean {
+  const now = new Date().toISOString();
+  const result = db
+    .prepare("UPDATE chat_preferences SET answer = ?, updated_at = ? WHERE id = ?")
+    .run(answer, now, id);
+  return result.changes > 0;
+}
+
+export function deleteChatPreference(id: number): boolean {
+  const result = db.prepare("DELETE FROM chat_preferences WHERE id = ?").run(id);
   return result.changes > 0;
 }
 

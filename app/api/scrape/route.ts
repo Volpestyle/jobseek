@@ -4,7 +4,7 @@ import path from "path";
 import fs from "fs";
 import { saveScrape, getLatestScrape } from "@/lib/db";
 
-export const maxDuration = 300; // 5 min timeout for long scrapes
+export const maxDuration = 900; // 15 min timeout for long scrapes
 
 export async function POST(req: NextRequest) {
   const logPrefix = "[API /api/scrape]";
@@ -47,7 +47,11 @@ export async function POST(req: NextRequest) {
     }
 
     const filtersJson = JSON.stringify(filters);
-    console.log(`${logPrefix} Spawning python script...`);
+
+    // Check for showBrowser flag in filters (frontend puts it there)
+    const showBrowser = !!filters.showBrowser;
+
+    console.log(`${logPrefix} Spawning python script... (Headless: ${!showBrowser})`);
 
     const pythonPath = path.join(process.cwd(), "venv", "bin", "python3");
     console.log(`${logPrefix} Using python at: ${pythonPath}`);
@@ -56,25 +60,59 @@ export async function POST(req: NextRequest) {
     const executable = fs.existsSync(pythonPath) ? pythonPath : "python3";
     console.log(`${logPrefix} Final executable: ${executable}`);
 
+    const summarize =
+      typeof filters?.summarize === "boolean"
+        ? filters.summarize
+        : process.env.JOB_SUMMARY_ENABLED
+          ? process.env.JOB_SUMMARY_ENABLED === "1" ||
+            process.env.JOB_SUMMARY_ENABLED?.toLowerCase() === "true"
+          : true;
+    const summarizeModel =
+      filters?.summarizeModel || process.env.JOB_SUMMARY_MODEL || "haiku";
+    const summarizeTimeout =
+      parseInt(process.env.JOB_SUMMARY_TIMEOUT || "60", 10) || 60;
+    const summarizeMax =
+      parseInt(process.env.JOB_SUMMARY_MAX || "0", 10) || 0;
+    const summaryFieldsPath = process.env.JOB_SUMMARY_FIELDS_PATH || "";
+
+    const args = [
+      scriptPath,
+      "--filters",
+      filtersJson,
+      "--max-pages",
+      String(maxPages),
+    ];
+
+    if (showBrowser) {
+      args.push("--show-browser");
+    }
+
+    if (summarize) {
+      args.push("--summarize");
+      if (summarizeModel) {
+        args.push("--summarize-model", summarizeModel);
+      }
+      if (summarizeTimeout) {
+        args.push("--summarize-timeout", String(summarizeTimeout));
+      }
+      if (summarizeMax >= 0) {
+        args.push("--summarize-max", String(summarizeMax));
+      }
+      if (summaryFieldsPath) {
+        args.push("--summary-fields", summaryFieldsPath);
+      }
+    }
+
     const result = await new Promise<{ stdout: string; stderr: string }>(
       (resolve, reject) => {
-        const proc = spawn(
-          executable,
-          [
-            scriptPath,
-            "--filters",
-            filtersJson,
-            "--max-pages",
-            String(maxPages),
-          ],
-          {
-            env: {
-              ...process.env,
-              LINKEDIN_EMAIL: process.env.LINKEDIN_EMAIL,
-              LINKEDIN_PASSWORD: process.env.LINKEDIN_PASSWORD,
-            },
-            timeout: 300000, // 5 min
-          }
+        const proc = spawn(executable, args, {
+          env: {
+            ...process.env,
+            LINKEDIN_EMAIL: process.env.LINKEDIN_EMAIL,
+            LINKEDIN_PASSWORD: process.env.LINKEDIN_PASSWORD,
+          },
+          timeout: 900000, // 15 min
+        }
         );
 
         console.log(`${logPrefix} Process spawned with PID: ${proc.pid}`);

@@ -1,6 +1,9 @@
 "use client";
 
-import { CSSProperties, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { Clock, Database, Trash2 } from "lucide-react";
 
 interface ScrapeMetadata {
   id: number;
@@ -83,168 +86,108 @@ export default function ScrapeHistory({
     return parts.join(" · ") || "No filters";
   };
 
-  if (loading) {
-    return (
-      <div style={styles.panel}>
-        <div style={styles.header}>
-          <span style={styles.headerLabel}>SCRAPE HISTORY</span>
-        </div>
-        <div style={styles.loading}>Loading...</div>
-      </div>
-    );
-  }
-
-  if (scrapes.length === 0) {
-    return (
-      <div style={styles.panel}>
-        <div style={styles.header}>
-          <span style={styles.headerLabel}>SCRAPE HISTORY</span>
-        </div>
-        <div style={styles.empty}>No scrapes yet</div>
-      </div>
-    );
-  }
-
   return (
-    <div style={styles.panel}>
-      <div style={styles.header}>
-        <span style={styles.headerLabel}>SCRAPE HISTORY</span>
-        <span style={styles.count}>{scrapes.length}</span>
+    <div id="history" className="cyber-card">
+      {/* Header */}
+      <div className="border-b border-border px-4 py-3">
+        <div className="flex items-center justify-between">
+          <span className="terminal-label">RUN HISTORY</span>
+          <span className="font-mono text-[10px] text-muted-foreground/50">
+            {scrapes.length} runs
+          </span>
+        </div>
       </div>
-      <div style={styles.list}>
-        {scrapes.map((scrape) => (
-          <div
-            key={scrape.id}
-            style={{
-              ...styles.item,
-              ...(currentScrapeId === scrape.id ? styles.itemActive : {}),
-            }}
-            onClick={() => onSelect(scrape.id)}
-          >
-            <div style={styles.itemMain}>
-              <div style={styles.itemFilters}>
-                {summarizeFilters(scrape.filters)}
-              </div>
-              <div style={styles.itemMeta}>
-                <span style={styles.itemDate}>{formatDate(scrape.scraped_at)}</span>
-                <span style={styles.itemJobs}>{scrape.job_count} jobs</span>
-              </div>
-            </div>
-            <button
-              style={{
-                ...styles.deleteBtn,
-                opacity: deleting === scrape.id ? 0.5 : 1,
-              }}
-              onClick={(e) => handleDelete(scrape.id, e)}
-              disabled={deleting === scrape.id}
-              title="Delete"
-            >
-              ×
-            </button>
+
+      <div className="p-3">
+        {/* Loading */}
+        {loading && (
+          <div className="space-y-2">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-14 rounded shimmer" />
+            ))}
           </div>
-        ))}
+        )}
+
+        {/* Empty */}
+        {!loading && scrapes.length === 0 && (
+          <div className="flex flex-col items-center gap-2 py-8 text-center">
+            <Database className="h-6 w-6 text-muted-foreground/30" />
+            <p className="font-mono text-xs text-muted-foreground/60">
+              No runs recorded
+            </p>
+          </div>
+        )}
+
+        {/* List */}
+        {!loading && scrapes.length > 0 && (
+          <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+            {scrapes.map((scrape, i) => {
+              const isActive = currentScrapeId === scrape.id;
+              return (
+                <div
+                  key={scrape.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onSelect(scrape.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onSelect(scrape.id);
+                    }
+                  }}
+                  className={cn(
+                    "group flex items-start justify-between gap-3 rounded border p-3 text-left transition-all cursor-pointer",
+                    isActive
+                      ? "border-primary/40 bg-primary/10"
+                      : "border-transparent hover:border-border hover:bg-muted/30",
+                    "stagger-in"
+                  )}
+                  style={{ animationDelay: `${i * 0.05}s` }}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-[10px] text-muted-foreground/40">
+                        #{String(scrape.id).padStart(2, "0")}
+                      </span>
+                      <span
+                        className={cn(
+                          "truncate text-xs font-medium",
+                          isActive ? "text-primary" : "text-foreground"
+                        )}
+                      >
+                        {summarizeFilters(scrape.filters)}
+                      </span>
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center gap-1 font-mono text-[10px] text-muted-foreground/60">
+                        <Clock className="h-2.5 w-2.5" />
+                        {formatDate(scrape.scraped_at)}
+                      </span>
+                      <span
+                        className={cn(
+                          "font-mono text-[10px]",
+                          isActive ? "text-primary" : "text-muted-foreground"
+                        )}
+                      >
+                        {scrape.job_count} jobs
+                      </span>
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                    onClick={(e) => handleDelete(scrape.id, e)}
+                    disabled={deleting === scrape.id}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
 }
-
-const styles: Record<string, CSSProperties> = {
-  panel: {
-    background: "var(--bg-card)",
-    border: "1px solid var(--border)",
-    borderRadius: "var(--radius-lg)",
-    overflow: "hidden",
-  },
-  header: {
-    padding: "14px 18px",
-    borderBottom: "1px solid var(--border)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  headerLabel: {
-    fontSize: "11px",
-    fontWeight: 600,
-    textTransform: "uppercase",
-    letterSpacing: "0.08em",
-    color: "var(--text-tertiary)",
-  },
-  count: {
-    fontSize: "11px",
-    fontWeight: 600,
-    color: "var(--text-secondary)",
-    background: "var(--bg-secondary)",
-    padding: "2px 8px",
-    borderRadius: "10px",
-  },
-  list: {
-    maxHeight: "240px",
-    overflowY: "auto",
-  },
-  item: {
-    padding: "12px 18px",
-    borderBottom: "1px solid var(--border)",
-    display: "flex",
-    alignItems: "center",
-    gap: "12px",
-    cursor: "pointer",
-    transition: "background var(--transition)",
-  },
-  itemActive: {
-    background: "var(--accent-dim)",
-  },
-  itemMain: {
-    flex: 1,
-    minWidth: 0,
-  },
-  itemFilters: {
-    fontSize: "13px",
-    fontWeight: 500,
-    color: "var(--text-primary)",
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-  },
-  itemMeta: {
-    marginTop: "4px",
-    display: "flex",
-    gap: "12px",
-  },
-  itemDate: {
-    fontSize: "11px",
-    color: "var(--text-tertiary)",
-    fontFamily: "var(--font-mono)",
-  },
-  itemJobs: {
-    fontSize: "11px",
-    color: "var(--accent)",
-    fontFamily: "var(--font-mono)",
-  },
-  deleteBtn: {
-    width: "24px",
-    height: "24px",
-    borderRadius: "4px",
-    border: "1px solid var(--border)",
-    background: "transparent",
-    color: "var(--text-tertiary)",
-    fontSize: "16px",
-    cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    transition: "all var(--transition)",
-    flexShrink: 0,
-  },
-  loading: {
-    padding: "20px",
-    fontSize: "12px",
-    color: "var(--text-tertiary)",
-    textAlign: "center",
-  },
-  empty: {
-    padding: "20px",
-    fontSize: "12px",
-    color: "var(--text-tertiary)",
-    textAlign: "center",
-  },
-};
