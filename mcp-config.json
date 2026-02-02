@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "jobseek-browser": {
+      "command": "npx",
+      "args": ["tsx", "mcp-server/index.ts"],
+      "cwd": "/Users/jamesvolpe/web/jobseek"
+    }
+  }
+}
