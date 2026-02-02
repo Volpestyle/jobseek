@@ -1,29 +1,39 @@
 "use client";
 
-import { CSSProperties, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import FilterPanel, { Filters } from "@/components/FilterPanel";
-import JobTable, { Job } from "@/components/JobTable";
-import ScrapeHistory from "@/components/ScrapeHistory";
+import { cn } from "@/lib/utils";
+import { Activity, Clock, Database, Zap } from "lucide-react";
+
+interface ScrapeStats {
+  totalJobs: number;
+  totalRuns: number;
+  lastRun: string | null;
+}
 
 export default function Home() {
-  const [jobs, setJobs] = useState<Job[]>([]);
+  const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [scrapedAt, setScrapedAt] = useState<string | null>(null);
-  const [logs, setLogs] = useState<string | null>(null);
-  const [currentScrapeId, setCurrentScrapeId] = useState<number | null>(null);
-  const [historyKey, setHistoryKey] = useState(0);
+  const [stats, setStats] = useState<ScrapeStats>({
+    totalJobs: 0,
+    totalRuns: 0,
+    lastRun: null,
+  });
 
-  // Load latest scrape on mount
+  // Load stats on mount
   useEffect(() => {
-    fetch("/api/scrape")
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.jobs?.length) {
-          setJobs(data.jobs);
-          setScrapedAt(data.scrapedAt || null);
-          setCurrentScrapeId(data.id || null);
-        }
+    Promise.all([fetch("/api/scrape"), fetch("/api/scrapes")])
+      .then(async ([latestRes, historyRes]) => {
+        const latest = await latestRes.json();
+        const history = await historyRes.json();
+
+        setStats({
+          totalJobs: latest.jobs?.length || 0,
+          totalRuns: Array.isArray(history) ? history.length : 0,
+          lastRun: latest.scrapedAt || null,
+        });
       })
       .catch(() => {});
   }, []);
@@ -32,7 +42,6 @@ export default function Home() {
     async (filters: Filters, maxPages: number) => {
       setIsLoading(true);
       setError(null);
-      setLogs(null);
 
       try {
         const res = await fetch("/api/scrape", {
@@ -45,16 +54,11 @@ export default function Home() {
 
         if (!res.ok) {
           setError(data.error || `HTTP ${res.status}`);
-          if (data.details) setLogs(data.details);
           return;
         }
 
-        setJobs(data.jobs || []);
-        setScrapedAt(data.scrapedAt || new Date().toISOString());
-        setCurrentScrapeId(data.id || null);
-        if (data.logs) setLogs(data.logs);
-        // Refresh history list
-        setHistoryKey((k) => k + 1);
+        // Redirect to results page after successful scrape
+        router.push("/results");
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Network error";
         setError(message);
@@ -62,228 +66,155 @@ export default function Home() {
         setIsLoading(false);
       }
     },
-    []
+    [router]
   );
 
-  const handleSelectScrape = useCallback(async (id: number) => {
-    try {
-      const res = await fetch(`/api/scrapes/${id}`);
-      if (!res.ok) return;
-      const data = await res.json();
-      setJobs(data.jobs || []);
-      setScrapedAt(data.scraped_at || null);
-      setCurrentScrapeId(data.id);
-      setLogs(data.logs || null);
-      setError(null);
-    } catch {
-      // ignore
-    }
-  }, []);
+  const statusConfig = isLoading
+    ? { label: "SCRAPING", class: "badge-active", icon: Activity }
+    : error
+      ? { label: "ERROR", class: "badge-error", icon: Zap }
+      : { label: "READY", class: "badge-ready", icon: Zap };
 
   return (
-    <div style={styles.page}>
-      {/* Subtle grid background */}
-      <div style={styles.gridBg} />
-
-      <header style={styles.header}>
-        <div style={styles.logoRow}>
-          <div style={styles.logo}>
-            <span style={styles.logoIcon}>◆</span>
-            <span style={styles.logoText}>JobScraper</span>
-          </div>
-          <span style={styles.badge}>STEALTH</span>
+    <div className="space-y-6">
+      {/* Header Section */}
+      <header className="flex flex-wrap items-start justify-between gap-6">
+        <div className="space-y-1">
+          <h1 className="text-xl font-medium tracking-tight">
+            Execute Scrape
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Configure search parameters and run a stealth extraction
+          </p>
         </div>
-        <p style={styles.subtitle}>
-          LinkedIn job search powered by Playwright · burner account ·
-          anti-detection
-        </p>
-      </header>
 
-      <main style={styles.main}>
-        <aside style={styles.sidebar}>
-          <FilterPanel onScrape={handleScrape} isLoading={isLoading} />
+        {/* Quick Stats */}
+        <div className="flex items-center gap-6">
+          <div className="text-right">
+            <div className="terminal-label mb-1">STATUS</div>
+            <div
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded px-2 py-1 font-mono text-[11px] font-medium",
+                statusConfig.class
+              )}
+            >
+              <statusConfig.icon className="h-3 w-3" />
+              {statusConfig.label}
+            </div>
+          </div>
 
-          {/* Status card */}
-          <div style={styles.statusCard}>
-            <div style={styles.statusRow}>
-              <span style={styles.statusLabel}>Status</span>
-              <span
-                style={{
-                  ...styles.statusDot,
-                  background: isLoading
-                    ? "var(--warning)"
-                    : error
-                    ? "var(--danger)"
-                    : "var(--accent)",
-                  boxShadow: `0 0 8px ${
-                    isLoading
-                      ? "var(--warning)"
-                      : error
-                      ? "var(--danger)"
-                      : "var(--accent)"
-                  }`,
-                }}
-              />
-              <span style={styles.statusText}>
-                {isLoading ? "Scraping" : error ? "Error" : "Ready"}
+          <div className="h-8 w-px bg-border" />
+
+          <div className="text-right">
+            <div className="terminal-label mb-1">TOTAL RUNS</div>
+            <div className="flex items-center gap-1.5">
+              <Database className="h-3 w-3 text-muted-foreground" />
+              <span className="font-mono text-lg font-bold text-foreground">
+                {stats.totalRuns}
               </span>
             </div>
-            <div style={styles.statusRow}>
-              <span style={styles.statusLabel}>Jobs found</span>
-              <span style={styles.statusValue}>{jobs.length}</span>
-            </div>
-            {scrapedAt && (
-              <div style={styles.statusRow}>
-                <span style={styles.statusLabel}>Last run</span>
-                <span style={styles.statusValue}>
-                  {new Date(scrapedAt).toLocaleTimeString()}
-                </span>
-              </div>
-            )}
           </div>
 
-          {/* Scrape history */}
-          <ScrapeHistory
-            key={historyKey}
-            onSelect={handleSelectScrape}
-            currentScrapeId={currentScrapeId}
-          />
-        </aside>
+          {stats.lastRun && (
+            <>
+              <div className="h-8 w-px bg-border" />
+              <div className="text-right">
+                <div className="terminal-label mb-1">LAST RUN</div>
+                <div className="flex items-center gap-1.5 font-mono text-sm text-muted-foreground">
+                  <Clock className="h-3 w-3" />
+                  {new Date(stats.lastRun).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </header>
 
-        <section style={styles.content}>
-          <JobTable
-            jobs={jobs}
-            scrapedAt={scrapedAt}
-            isLoading={isLoading}
-            error={error}
-            logs={logs}
-          />
-        </section>
-      </main>
+      {/* Main Content */}
+      <div className="grid gap-6 lg:grid-cols-[440px_1fr]">
+        {/* Filter Panel */}
+        <div className="stagger-in">
+          <FilterPanel onScrape={handleScrape} isLoading={isLoading} />
+        </div>
+
+        {/* Info Panel */}
+        <div className="space-y-4">
+          {/* Error Display */}
+          {error && (
+            <div className="cyber-card border-destructive/50 bg-destructive/5">
+              <div className="flex items-start gap-3 p-4">
+                <Zap className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <div className="terminal-label text-destructive">
+                    EXECUTION FAILED
+                  </div>
+                  <p className="font-mono text-sm text-destructive/80">{error}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Instructions */}
+          <div className="cyber-card">
+            <div className="border-b border-border px-4 py-3">
+              <span className="terminal-label">HOW IT WORKS</span>
+            </div>
+            <div className="p-4 space-y-4">
+              <div className="flex gap-3">
+                <span className="font-mono text-xs text-primary">01</span>
+                <div>
+                  <div className="text-sm font-medium">Configure Filters</div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Set keywords, location, experience level, and other parameters
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <span className="font-mono text-xs text-primary">02</span>
+                <div>
+                  <div className="text-sm font-medium">Execute Scrape</div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Playwright launches a stealth browser session with anti-detection
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <span className="font-mono text-xs text-primary">03</span>
+                <div>
+                  <div className="text-sm font-medium">Review Results</div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Jobs are stored locally and can be exported as CSV/JSON
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Tips */}
+          <div className="cyber-card">
+            <div className="border-b border-border px-4 py-3">
+              <span className="terminal-label">TIPS</span>
+            </div>
+            <div className="p-4 space-y-3 text-xs text-muted-foreground">
+              <p>
+                <span className="text-primary font-mono">Show Browser</span> — Enable
+                this if LinkedIn shows a CAPTCHA. You can solve it manually.
+              </p>
+              <p>
+                <span className="text-primary font-mono">Max Pages</span> — Each page
+                adds ~30 seconds. Start with 2-3 for testing.
+              </p>
+              <p>
+                <span className="text-primary font-mono">Remote Filter</span> — Filters
+                to "Remote" work type only on LinkedIn.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
-
-const styles: Record<string, CSSProperties> = {
-  page: {
-    minHeight: "100vh",
-    position: "relative",
-    overflow: "hidden",
-  },
-  gridBg: {
-    position: "fixed",
-    inset: 0,
-    backgroundImage:
-      "linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px)",
-    backgroundSize: "60px 60px",
-    opacity: 0.15,
-    pointerEvents: "none",
-    zIndex: 0,
-  },
-  header: {
-    position: "relative",
-    zIndex: 1,
-    padding: "32px 40px 0",
-    maxWidth: "1400px",
-    margin: "0 auto",
-  },
-  logoRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: "14px",
-    marginBottom: "8px",
-  },
-  logo: {
-    display: "flex",
-    alignItems: "center",
-    gap: "10px",
-  },
-  logoIcon: {
-    fontSize: "20px",
-    color: "var(--accent)",
-  },
-  logoText: {
-    fontSize: "22px",
-    fontWeight: 700,
-    letterSpacing: "-0.04em",
-    color: "var(--text-primary)",
-  },
-  badge: {
-    fontSize: "9px",
-    fontWeight: 700,
-    letterSpacing: "0.12em",
-    color: "var(--accent)",
-    background: "var(--accent-dim)",
-    padding: "3px 10px",
-    borderRadius: "20px",
-    border: "1px solid var(--accent)",
-  },
-  subtitle: {
-    fontSize: "13px",
-    color: "var(--text-tertiary)",
-    fontFamily: "var(--font-mono)",
-  },
-  main: {
-    position: "relative",
-    zIndex: 1,
-    display: "flex",
-    gap: "28px",
-    padding: "28px 40px 60px",
-    maxWidth: "1400px",
-    margin: "0 auto",
-  },
-  sidebar: {
-    width: "360px",
-    flexShrink: 0,
-    display: "flex",
-    flexDirection: "column",
-    gap: "16px",
-    position: "sticky",
-    top: "28px",
-    alignSelf: "flex-start",
-  },
-  content: {
-    flex: 1,
-    minWidth: 0,
-  },
-  statusCard: {
-    background: "var(--bg-card)",
-    border: "1px solid var(--border)",
-    borderRadius: "var(--radius-lg)",
-    padding: "18px 20px",
-    display: "flex",
-    flexDirection: "column",
-    gap: "12px",
-  },
-  statusRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: "10px",
-  },
-  statusLabel: {
-    fontSize: "11px",
-    fontWeight: 600,
-    textTransform: "uppercase",
-    letterSpacing: "0.08em",
-    color: "var(--text-tertiary)",
-    width: "80px",
-    flexShrink: 0,
-  },
-  statusDot: {
-    width: "7px",
-    height: "7px",
-    borderRadius: "50%",
-    flexShrink: 0,
-  },
-  statusText: {
-    fontSize: "13px",
-    color: "var(--text-secondary)",
-    fontFamily: "var(--font-mono)",
-  },
-  statusValue: {
-    fontSize: "13px",
-    color: "var(--text-primary)",
-    fontFamily: "var(--font-mono)",
-    fontWeight: 500,
-  },
-};
