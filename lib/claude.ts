@@ -447,7 +447,7 @@ export async function callClaudeJSON(
     let stderr = "";
 
     const timer = setTimeout(() => {
-      claudeLog("callClaudeJSON timed out");
+      console.error(`[Claude] callClaudeJSON timed out after ${timeout}ms`);
       try {
         proc.kill("SIGTERM");
       } catch {
@@ -466,22 +466,30 @@ export async function callClaudeJSON(
     proc.on("close", (code) => {
       clearTimeout(timer);
       claudeLog("callClaudeJSON finished", { code, stdoutLen: stdout.length });
+
+      if (code !== 0) {
+        console.error(`[Claude] callClaudeJSON exited with code ${code}`);
+      }
       if (stderr.trim()) {
-        claudeLog("callClaudeJSON stderr:", stderr.trim().slice(0, 500));
+        console.error(`[Claude] stderr: ${stderr.trim().slice(0, 1000)}`);
       }
 
       if (code !== 0 && !stdout.trim()) {
+        console.error("[Claude] No stdout output; summary will be null");
         resolve({ data: null, raw: stdout });
         return;
       }
 
       const data = parseClaudeJSON(stdout);
+      if (!data) {
+        console.error(`[Claude] parseClaudeJSON returned null. Raw output (first 500 chars): ${stdout.slice(0, 500)}`);
+      }
       resolve({ data, raw: stdout });
     });
 
     proc.on("error", (err) => {
       clearTimeout(timer);
-      claudeLog("callClaudeJSON spawn error:", err.message);
+      console.error(`[Claude] callClaudeJSON spawn error: ${err.message}`);
       resolve({ data: null, raw: "" });
     });
   });
