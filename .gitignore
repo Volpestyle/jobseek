@@ -21,3 +21,4 @@ data/
 *.pem
 scripts/__pycache__/
 tsconfig.tsbuildinfo
+venv/
