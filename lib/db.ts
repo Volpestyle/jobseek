@@ -43,6 +43,15 @@ db.exec(`
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS pipeline (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    link TEXT NOT NULL UNIQUE,
+    stage TEXT NOT NULL DEFAULT 'interested',
+    notes TEXT,
+    added_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
 `);
 
 const prefsColumns = db
@@ -219,6 +228,26 @@ export function deleteScrape(id: number): boolean {
   return result.changes > 0;
 }
 
+export function deleteJob(link: string): number {
+  const rows = db
+    .prepare("SELECT id, jobs FROM scrapes")
+    .all() as { id: number; jobs: string }[];
+
+  let totalRemoved = 0;
+  const update = db.prepare("UPDATE scrapes SET jobs = ?, job_count = ? WHERE id = ?");
+
+  for (const row of rows) {
+    const jobs = JSON.parse(row.jobs) as Job[];
+    const filtered = jobs.filter((j) => j.link !== link);
+    if (filtered.length < jobs.length) {
+      totalRemoved += jobs.length - filtered.length;
+      update.run(JSON.stringify(filtered), filtered.length, row.id);
+    }
+  }
+
+  return totalRemoved;
+}
+
 export interface Job {
   title: string;
   company: string;
@@ -338,6 +367,51 @@ export function updateChatPreference(
 
 export function deleteChatPreference(id: number): boolean {
   const result = db.prepare("DELETE FROM chat_preferences WHERE id = ?").run(id);
+  return result.changes > 0;
+}
+
+// Pipeline types re-exported from shared types (safe for client imports)
+export { PIPELINE_STAGES } from "./pipeline-types";
+export type { PipelineStage, PipelineEntry } from "./pipeline-types";
+import type { PipelineStage, PipelineEntry } from "./pipeline-types";
+
+export function getPipelineEntries(): PipelineEntry[] {
+  return db
+    .prepare("SELECT * FROM pipeline ORDER BY updated_at DESC")
+    .all() as PipelineEntry[];
+}
+
+export function addToPipeline(link: string, stage: PipelineStage = "interested"): PipelineEntry {
+  const now = new Date().toISOString();
+  const stmt = db.prepare(`
+    INSERT INTO pipeline (link, stage, added_at, updated_at)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(link) DO UPDATE SET
+      stage = excluded.stage,
+      updated_at = excluded.updated_at
+  `);
+  stmt.run(link, stage, now, now);
+  return db.prepare("SELECT * FROM pipeline WHERE link = ?").get(link) as PipelineEntry;
+}
+
+export function updatePipelineStage(link: string, stage: PipelineStage): boolean {
+  const now = new Date().toISOString();
+  const result = db
+    .prepare("UPDATE pipeline SET stage = ?, updated_at = ? WHERE link = ?")
+    .run(stage, now, link);
+  return result.changes > 0;
+}
+
+export function updatePipelineNotes(link: string, notes: string): boolean {
+  const now = new Date().toISOString();
+  const result = db
+    .prepare("UPDATE pipeline SET notes = ?, updated_at = ? WHERE link = ?")
+    .run(notes, now, link);
+  return result.changes > 0;
+}
+
+export function removeFromPipeline(link: string): boolean {
+  const result = db.prepare("DELETE FROM pipeline WHERE link = ?").run(link);
   return result.changes > 0;
 }
 

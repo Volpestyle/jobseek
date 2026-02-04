@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getChatPreferences } from "@/lib/db";
+import { getChatPreferences, addToPipeline } from "@/lib/db";
 import { streamClaudeAgentic, type ClaudeStreamEvent } from "@/lib/claude";
 
 export const dynamic = "force-dynamic";
@@ -132,6 +132,7 @@ Important:
               });
               break;
             case "done":
+              addToPipeline(jobUrl, "applied");
               sse("message", {
                 type: "complete",
                 message: "Application process completed",

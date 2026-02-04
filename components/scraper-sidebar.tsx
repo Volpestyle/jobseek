@@ -4,7 +4,7 @@ import * as React from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
-import { Activity, Filter, History, Radio } from "lucide-react";
+import { Filter, History, KanbanSquare, Radio } from "lucide-react";
 
 import {
   MotionSidebar,
@@ -21,7 +21,7 @@ import { cn } from "@/lib/utils";
 
 const menuItems = [
   { id: "scrape", label: "Scrape", icon: Filter, href: "/" },
-  { id: "results", label: "Results", icon: Activity, href: "/results" },
+  { id: "results", label: "Pipeline", icon: KanbanSquare, href: "/results" },
   { id: "history", label: "History", icon: History, href: "/history" },
 ];
 

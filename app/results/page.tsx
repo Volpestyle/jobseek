@@ -1,10 +1,11 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import JobTable, { Job } from "@/components/JobTable";
 import ChatInterface from "@/components/ChatInterface";
+import KanbanBoard from "@/components/KanbanBoard";
 import { TabNav } from "@/components/tab-nav";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,6 +22,8 @@ import {
   Layers,
   Search,
 } from "lucide-react";
+import type { KanbanCardData } from "@/components/KanbanCard";
+import type { PipelineStage, HydratedPipelineEntry } from "@/lib/pipeline-types";
 
 interface AccumulatedData {
   jobs: Job[];
@@ -37,12 +40,20 @@ const RUN_COUNT_OPTIONS = [
   { value: "all", label: "All runs" },
 ];
 
+const STAGE_LABELS: Record<PipelineStage, string> = {
+  interested: "INTERESTED",
+  applied: "APPLIED",
+  interview: "INTERVIEW",
+  offer: "OFFER",
+  rejected: "REJECTED",
+};
+
 function ResultsContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
   const initialCount = searchParams.get("count") || "5";
-  const initialTab = searchParams.get("tab") || "jobs";
+  const initialTab = searchParams.get("tab") || "pipeline";
 
   const [runCount, setRunCount] = useState(initialCount);
   const [activeTab, setActiveTab] = useState(initialTab);
@@ -51,6 +62,28 @@ function ResultsContent() {
   const [error, setError] = useState<string | null>(null);
   const [searchFilter, setSearchFilter] = useState("");
   const [pendingMessage, setPendingMessage] = useState("");
+  const [pipelineEntries, setPipelineEntries] = useState<KanbanCardData[]>([]);
+  const [pipelineLinks, setPipelineLinks] = useState<Set<string>>(new Set());
+
+  const fetchPipeline = useCallback(async () => {
+    try {
+      const res = await fetch("/api/pipeline");
+      if (!res.ok) return;
+      const result = await res.json() as { entries: HydratedPipelineEntry[] };
+      const cards: KanbanCardData[] = result.entries.map((e) => ({
+        link: e.pipeline.link,
+        stage: e.pipeline.stage as PipelineStage,
+        notes: e.pipeline.notes,
+        added_at: e.pipeline.added_at,
+        updated_at: e.pipeline.updated_at,
+        job: e.job,
+      }));
+      setPipelineEntries(cards);
+      setPipelineLinks(new Set(cards.map((c) => c.link)));
+    } catch {
+      // silent
+    }
+  }, []);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -71,6 +104,10 @@ function ResultsContent() {
 
     fetchData();
   }, [runCount]);
+
+  useEffect(() => {
+    fetchPipeline();
+  }, [fetchPipeline]);
 
   const handleRunCountChange = (value: string) => {
     setRunCount(value);
@@ -103,7 +140,38 @@ function ResultsContent() {
     handleTabChange("chat");
   };
 
+  const handleAddToPipeline = async (job: Job) => {
+    // Optimistic
+    setPipelineLinks((prev) => new Set([...prev, job.link]));
+
+    try {
+      const res = await fetch("/api/pipeline", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ link: job.link, stage: "interested" }),
+      });
+      if (!res.ok) throw new Error("Failed to add");
+      fetchPipeline();
+    } catch {
+      setPipelineLinks((prev) => {
+        const next = new Set(prev);
+        next.delete(job.link);
+        return next;
+      });
+    }
+  };
+
+  // Pipeline stage counts
+  const stageCounts = pipelineEntries.reduce(
+    (acc, e) => {
+      acc[e.stage] = (acc[e.stage] || 0) + 1;
+      return acc;
+    },
+    {} as Record<PipelineStage, number>
+  );
+
   const tabs = [
+    { id: "pipeline", label: "PIPELINE" },
     { id: "jobs", label: "JOBS" },
     { id: "chat", label: "CHAT" },
   ];
@@ -119,40 +187,61 @@ function ResultsContent() {
                 <ArrowLeft className="h-4 w-4" />
               </Button>
             </Link>
-            <h1 className="text-xl font-medium tracking-tight">Results</h1>
+            <h1 className="text-xl font-medium tracking-tight">Pipeline</h1>
           </div>
           <p className="text-sm text-muted-foreground ml-11">
-            Accumulated jobs from multiple runs
+            Track jobs through your application pipeline
           </p>
         </div>
 
         {/* Controls */}
         <div className="flex items-center gap-4">
-          {/* Run count selector */}
-          <div className="flex items-center gap-2">
-            <Layers className="h-3.5 w-3.5 text-muted-foreground" />
-            <Select value={runCount} onValueChange={handleRunCountChange}>
-              <SelectTrigger className="w-[140px] h-8 font-mono text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {RUN_COUNT_OPTIONS.map((opt) => (
-                  <SelectItem
-                    key={opt.value}
-                    value={opt.value}
-                    className="font-mono text-xs"
-                  >
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {activeTab === "jobs" && (
+            <div className="flex items-center gap-2">
+              <Layers className="h-3.5 w-3.5 text-muted-foreground" />
+              <Select value={runCount} onValueChange={handleRunCountChange}>
+                <SelectTrigger className="w-[140px] h-8 font-mono text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {RUN_COUNT_OPTIONS.map((opt) => (
+                    <SelectItem
+                      key={opt.value}
+                      value={opt.value}
+                      className="font-mono text-xs"
+                    >
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
       </header>
 
       {/* Stats bar */}
-      {data && !loading && (
+      {activeTab === "pipeline" && (
+        <div className="cyber-card">
+          <div className="flex flex-wrap items-center gap-6 px-4 py-3">
+            {(Object.keys(STAGE_LABELS) as PipelineStage[]).map((stage) => (
+              <div key={stage}>
+                <div className="terminal-label mb-0.5">{STAGE_LABELS[stage]}</div>
+                <span className="font-mono text-sm font-bold">
+                  {stageCounts[stage] || 0}
+                </span>
+              </div>
+            ))}
+            <div className="h-8 w-px bg-border" />
+            <div>
+              <div className="terminal-label mb-0.5">TOTAL</div>
+              <span className="stat-value text-xl">{pipelineEntries.length}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === "jobs" && data && !loading && (
         <div className="cyber-card">
           <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-3">
             <div className="flex items-center gap-6">
@@ -198,7 +287,7 @@ function ResultsContent() {
       <TabNav tabs={tabs} activeTab={activeTab} onTabChange={handleTabChange} />
 
       {/* Loading State */}
-      {loading && (
+      {loading && activeTab !== "pipeline" && (
         <div className="cyber-card">
           <div className="flex flex-col items-center gap-4 py-16">
             <div className="h-8 w-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
@@ -210,7 +299,7 @@ function ResultsContent() {
       )}
 
       {/* Error State */}
-      {error && !loading && (
+      {error && !loading && activeTab !== "pipeline" && (
         <div className="cyber-card border-destructive/50 bg-destructive/5">
           <div className="flex flex-col items-center gap-4 p-8">
             <p className="font-mono text-sm text-destructive">{error}</p>
@@ -222,6 +311,11 @@ function ResultsContent() {
           </div>
         </div>
       )}
+
+      {/* Pipeline Tab */}
+      <div className={activeTab === "pipeline" ? "" : "hidden"}>
+        <KanbanBoard entries={pipelineEntries} onRefresh={fetchPipeline} />
+      </div>
 
       {/* Jobs Tab */}
       <div className={activeTab === "jobs" ? "" : "hidden"}>
@@ -256,6 +350,8 @@ function ResultsContent() {
                   logs={null}
                   onSearchChange={setSearchFilter}
                   onApply={handleApply}
+                  onAddToPipeline={handleAddToPipeline}
+                  pipelineLinks={pipelineLinks}
                 />
               )
             )}

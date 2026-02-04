@@ -10,6 +10,7 @@ import {
   ChevronUp,
   Download,
   FileJson,
+  KanbanSquare,
   Loader2,
   Play,
   Search,
@@ -36,6 +37,8 @@ interface JobTableProps {
   logs: string | null;
   onSearchChange?: (search: string) => void;
   onApply?: (job: Job) => void;
+  onAddToPipeline?: (job: Job) => void;
+  pipelineLinks?: Set<string>;
 }
 
 export default function JobTable({
@@ -46,6 +49,8 @@ export default function JobTable({
   logs,
   onSearchChange,
   onApply,
+  onAddToPipeline,
+  pipelineLinks,
 }: JobTableProps) {
   const [search, setSearch] = useState("");
   const [showLogs, setShowLogs] = useState(false);
@@ -324,6 +329,24 @@ export default function JobTable({
                         <ChevronDown className="ml-1 h-3 w-3" />
                       )}
                     </Button>
+                  )}
+                  {onAddToPipeline && (
+                    pipelineLinks?.has(job.link) ? (
+                      <span className="h-7 px-2 font-mono text-[10px] text-primary/60 flex items-center">
+                        <KanbanSquare className="h-3 w-3 mr-1" />
+                        IN PIPELINE
+                      </span>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onAddToPipeline(job)}
+                        className="h-7 px-2 font-mono text-[10px]"
+                      >
+                        <KanbanSquare className="h-3 w-3 mr-1" />
+                        PIPELINE
+                      </Button>
+                    )
                   )}
                   {onApply && (
                     <Button

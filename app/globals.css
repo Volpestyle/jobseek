@@ -414,6 +414,30 @@ body::before {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
+   KANBAN BOARD
+   ═══════════════════════════════════════════════════════════════════ */
+
+.kanban-column {
+  min-height: calc(100vh - 280px);
+}
+
+.kanban-card-dragging {
+  box-shadow: 0 0 20px oklch(0.78 0.15 192 / 0.3);
+  opacity: 0.9;
+}
+
+.kanban-drop-active {
+  background: oklch(0.14 0.02 260);
+  border-color: var(--cyber-cyan);
+}
+
+.stage-interested { border-top: 2px solid var(--cyber-cyan); }
+.stage-applied { border-top: 2px solid var(--cyber-amber); }
+.stage-interview { border-top: 2px solid var(--cyber-magenta); }
+.stage-offer { border-top: 2px solid var(--cyber-green); }
+.stage-rejected { border-top: 2px solid var(--cyber-red); }
+
+/* ═══════════════════════════════════════════════════════════════════
    FOCUS STATES
    ═══════════════════════════════════════════════════════════════════ */
 
