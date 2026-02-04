@@ -14,8 +14,6 @@ import {
   Play,
   Briefcase,
   Globe,
-  Monitor,
-  Zap,
   CheckCircle2,
   AlertCircle,
 } from "lucide-react";
@@ -42,7 +40,8 @@ interface Job {
 interface ChatInterfaceProps {
   jobs: Job[];
   searchFilter?: string;
-  onApply?: (job: Job) => void;
+  pendingMessage?: string;
+  onPendingMessageConsumed?: () => void;
 }
 
 interface MessageBubbleProps {
@@ -238,7 +237,7 @@ function MessageBubble({ message }: MessageBubbleProps) {
   );
 }
 
-function ThinkingIndicator({ agentic }: { agentic?: boolean }) {
+function ThinkingIndicator() {
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -251,21 +250,26 @@ function ThinkingIndicator({ agentic }: { agentic?: boolean }) {
         <div className="absolute inset-0 rounded-full border-2 border-muted border-t-primary animate-spin" />
       </div>
       <span className="text-xs text-muted-foreground font-mono tracking-wide">
-        {agentic ? "launching browser..." : "thinking..."}
+        thinking...
       </span>
     </motion.div>
   );
 }
 
-export default function ChatInterface({ jobs, searchFilter, onApply }: ChatInterfaceProps) {
+export default function ChatInterface({
+  jobs,
+  searchFilter,
+  pendingMessage,
+  onPendingMessageConsumed,
+}: ChatInterfaceProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
-  const [agenticMode, setAgenticMode] = useState(false);
   const [, setThinkingContent] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const pendingSubmitRef = useRef<string | null>(null);
 
   // Filter jobs based on search filter from JobTable
   const filteredJobs = searchFilter
@@ -287,6 +291,25 @@ export default function ChatInterface({ jobs, searchFilter, onApply }: ChatInter
   useEffect(() => {
     scrollToBottom();
   }, [messages, scrollToBottom]);
+
+  // Handle pending message from parent (e.g. clicking APPLY on a job)
+  useEffect(() => {
+    if (pendingMessage && !isStreaming) {
+      pendingSubmitRef.current = pendingMessage;
+      setInputValue(pendingMessage);
+      onPendingMessageConsumed?.();
+    }
+  }, [pendingMessage, isStreaming, onPendingMessageConsumed]);
+
+  // Auto-submit when pendingSubmitRef is set and inputValue matches
+  useEffect(() => {
+    if (pendingSubmitRef.current && inputValue === pendingSubmitRef.current && !isStreaming) {
+      pendingSubmitRef.current = null;
+      // Small delay so user sees what's being sent
+      const timer = setTimeout(() => handleSubmit(), 150);
+      return () => clearTimeout(timer);
+    }
+  }, [inputValue, isStreaming]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const generateMessageId = () => {
     return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -331,10 +354,6 @@ export default function ChatInterface({ jobs, searchFilter, onApply }: ChatInter
         jobTitle: job?.title,
         company: job?.company,
       });
-
-      if (arrayIndex >= 0 && arrayIndex < filteredJobs.length && onApply) {
-        onApply(job);
-      }
     }
 
     return { cleaned: content.replace(applyRegex, "").trim(), actions };
@@ -415,7 +434,7 @@ export default function ChatInterface({ jobs, searchFilter, onApply }: ChatInter
           message: trimmedInput,
           history: nextHistory,
           jobs: filteredJobs,
-          agentic: agenticMode,
+          agentic: true,
         }),
         signal: abortControllerRef.current.signal,
       });
@@ -579,58 +598,18 @@ export default function ChatInterface({ jobs, searchFilter, onApply }: ChatInter
           <Bookmark className="h-4 w-4 text-primary" />
           <span className="terminal-label">JOB ASSISTANT</span>
         </div>
-        <div className="flex items-center gap-2">
-          {/* Agentic Mode Toggle */}
-          <button
-            onClick={() => setAgenticMode(!agenticMode)}
-            className={cn(
-              "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-mono tracking-wide transition-all",
-              agenticMode
-                ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
-                : "bg-muted/50 text-muted-foreground border border-border hover:border-blue-500/30 hover:text-blue-400"
-            )}
+        {messages.length > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={clearChat}
+            className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
           >
-            {agenticMode ? (
-              <Monitor className="h-3 w-3" />
-            ) : (
-              <Zap className="h-3 w-3" />
-            )}
-            {agenticMode ? "BROWSER ON" : "BROWSER OFF"}
-          </button>
-          {messages.length > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={clearChat}
-              className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
-            >
-              <RotateCcw className="h-3 w-3 mr-1" />
-              Clear
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* Agentic Mode Banner */}
-      <AnimatePresence>
-        {agenticMode && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden"
-          >
-            <div className="px-4 py-2 bg-blue-500/10 border-b border-blue-500/20">
-              <div className="flex items-center gap-2 text-xs text-blue-400">
-                <Monitor className="h-3.5 w-3.5" />
-                <span className="font-mono">
-                  Browser automation enabled. Ask me to apply to a job and watch it happen.
-                </span>
-              </div>
-            </div>
-          </motion.div>
+            <RotateCcw className="h-3 w-3 mr-1" />
+            Clear
+          </Button>
         )}
-      </AnimatePresence>
+      </div>
 
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
@@ -638,38 +617,22 @@ export default function ChatInterface({ jobs, searchFilter, onApply }: ChatInter
           <div className="h-full flex flex-col items-center justify-center text-center">
             <div className="space-y-3">
               <p className="font-mono text-sm text-muted-foreground">
-                {agenticMode
-                  ? "Ready to automate job applications..."
-                  : "Ask me about your job search..."}
+                Ask me about your job search...
               </p>
               <div className="flex flex-wrap justify-center gap-2">
-                {agenticMode
-                  ? [
-                      "Apply to job #1",
-                      "Fill out the application for the first job",
-                      "Help me apply to remote positions",
-                    ].map((suggestion) => (
-                      <button
-                        key={suggestion}
-                        onClick={() => setInputValue(suggestion)}
-                        className="px-3 py-1.5 rounded-full border border-blue-500/30 bg-blue-500/10 text-xs text-blue-400 hover:bg-blue-500/20 transition-colors"
-                      >
-                        {suggestion}
-                      </button>
-                    ))
-                  : [
-                      "Which jobs match my skills?",
-                      "Show me remote positions",
-                      "What's the salary range?",
-                    ].map((suggestion) => (
-                      <button
-                        key={suggestion}
-                        onClick={() => setInputValue(suggestion)}
-                        className="px-3 py-1.5 rounded-full border border-border bg-muted/30 text-xs text-muted-foreground hover:text-foreground hover:border-primary/30 transition-colors"
-                      >
-                        {suggestion}
-                      </button>
-                    ))}
+                {[
+                  "Which jobs match my skills?",
+                  "Show me remote positions",
+                  "Apply to job #1",
+                ].map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    onClick={() => setInputValue(suggestion)}
+                    className="px-3 py-1.5 rounded-full border border-border bg-muted/30 text-xs text-muted-foreground hover:text-foreground hover:border-primary/30 transition-colors"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
               </div>
             </div>
           </div>
@@ -679,7 +642,7 @@ export default function ChatInterface({ jobs, searchFilter, onApply }: ChatInter
               <MessageBubble key={message.id} message={message} />
             ))}
             <AnimatePresence>
-              {showThinkingIndicator && <ThinkingIndicator agentic={agenticMode} />}
+              {showThinkingIndicator && <ThinkingIndicator />}
             </AnimatePresence>
           </>
         )}
@@ -690,23 +653,14 @@ export default function ChatInterface({ jobs, searchFilter, onApply }: ChatInter
       <div className="p-4 bg-background/50 backdrop-blur-sm">
         <form
           onSubmit={handleSubmit}
-          className={cn(
-            "relative flex items-end gap-2 p-2 rounded-xl border focus-within:ring-1 transition-all shadow-sm",
-            agenticMode
-              ? "border-blue-500/30 bg-blue-500/5 focus-within:bg-blue-500/10 focus-within:border-blue-500/40 focus-within:ring-blue-500/20 hover:border-blue-500/40"
-              : "border-border/50 bg-muted/30 focus-within:bg-muted/50 focus-within:border-primary/20 focus-within:ring-primary/20 hover:border-primary/10 hover:shadow-md"
-          )}
+          className="relative flex items-end gap-2 p-2 rounded-xl border border-border/50 bg-muted/30 focus-within:bg-muted/50 focus-within:border-primary/20 focus-within:ring-1 focus-within:ring-primary/20 transition-all shadow-sm hover:border-primary/10 hover:shadow-md"
         >
           <textarea
             ref={inputRef}
             value={inputValue}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
-            placeholder={
-              agenticMode
-                ? "Ask me to apply to a job..."
-                : "Ask about jobs, preferences, or applications..."
-            }
+            placeholder="Ask about jobs, or say 'apply to job #3'..."
             disabled={isStreaming}
             rows={1}
             className="w-full resize-none bg-transparent border-none px-3 py-3 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-0 transition-colors disabled:opacity-50 min-h-[48px]"
@@ -720,9 +674,7 @@ export default function ChatInterface({ jobs, searchFilter, onApply }: ChatInter
               className={cn(
                 "h-8 w-8 shrink-0 rounded-lg transition-all duration-200",
                 inputValue.trim()
-                  ? agenticMode
-                    ? "bg-blue-500 text-white shadow-sm opacity-100 transform scale-100"
-                    : "bg-primary text-primary-foreground shadow-sm opacity-100 transform scale-100"
+                  ? "bg-primary text-primary-foreground shadow-sm opacity-100 transform scale-100"
                   : "bg-transparent text-muted-foreground hover:bg-muted opacity-50 transform scale-95"
               )}
             >
@@ -735,7 +687,7 @@ export default function ChatInterface({ jobs, searchFilter, onApply }: ChatInter
           </div>
         </form>
         <p className="text-[10px] text-muted-foreground/40 mt-2 text-center font-mono">
-          {agenticMode ? "Browser will open when you send a message" : "Shift + Enter for new line"}
+          Shift + Enter for new line
         </p>
       </div>
     </div>

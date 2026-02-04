@@ -327,14 +327,33 @@ async function handleTool(
       browser = await chromium.launch({
         headless,
         slowMo,
-        args: ["--start-maximized"],
+        args: [
+          "--start-maximized",
+          "--disable-blink-features=AutomationControlled",
+          "--no-sandbox",
+        ],
       });
       context = await browser.newContext({
         viewport: { width: 1280, height: 900 },
         userAgent:
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        locale: "en-US",
+        timezoneId: "America/New_York",
       });
       page = await context.newPage();
+
+      // Apply stealth scripts to avoid bot detection
+      await page.addInitScript(`
+        Object.defineProperty(navigator, 'webdriver', { get: () => false });
+        window.chrome = { runtime: {} };
+        Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+        Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+        const originalQuery = window.navigator.permissions.query;
+        window.navigator.permissions.query = (parameters) =>
+          parameters.name === 'notifications'
+            ? Promise.resolve({ state: Notification.permission })
+            : originalQuery(parameters);
+      `);
 
       return {
         content: [

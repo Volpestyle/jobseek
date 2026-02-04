@@ -5,7 +5,6 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import JobTable, { Job } from "@/components/JobTable";
 import ChatInterface from "@/components/ChatInterface";
-import ApplyInterface from "@/components/ApplyInterface";
 import { TabNav } from "@/components/tab-nav";
 import { Button } from "@/components/ui/button";
 import {
@@ -50,8 +49,8 @@ function ResultsContent() {
   const [data, setData] = useState<AccumulatedData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [applyingJob, setApplyingJob] = useState<Job | null>(null);
   const [searchFilter, setSearchFilter] = useState("");
+  const [pendingMessage, setPendingMessage] = useState("");
 
   useEffect(() => {
     const fetchData = async () => {
@@ -95,6 +94,13 @@ function ResultsContent() {
       d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
     if (from === to) return format(fromDate);
     return `${format(fromDate)} - ${format(toDate)}`;
+  };
+
+  const handleApply = (job: Job) => {
+    const jobIndex = data?.jobs.indexOf(job);
+    const num = jobIndex !== undefined && jobIndex >= 0 ? jobIndex + 1 : "?";
+    setPendingMessage(`Apply to job #${num} - ${job.title} at ${job.company}`);
+    handleTabChange("chat");
   };
 
   const tabs = [
@@ -249,7 +255,7 @@ function ResultsContent() {
                   error={null}
                   logs={null}
                   onSearchChange={setSearchFilter}
-                  onApply={(job) => setApplyingJob(job)}
+                  onApply={handleApply}
                 />
               )
             )}
@@ -263,24 +269,12 @@ function ResultsContent() {
           <ChatInterface
             jobs={data.jobs}
             searchFilter={searchFilter}
-            onApply={(job) => setApplyingJob(job)}
+            pendingMessage={pendingMessage}
+            onPendingMessageConsumed={() => setPendingMessage("")}
           />
         )}
       </div>
 
-      {/* Apply Interface Overlay */}
-      {applyingJob && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
-          <div className="w-full max-w-2xl">
-            <ApplyInterface
-              jobUrl={applyingJob.link}
-              jobTitle={applyingJob.title}
-              company={applyingJob.company}
-              onClose={() => setApplyingJob(null)}
-            />
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -1,25 +1,17 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { motion } from "motion/react";
 import {
-  Send,
   Loader2,
   CheckCircle,
   AlertCircle,
   Play,
   Square,
   ChevronDown,
+  Wrench,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 
@@ -27,35 +19,23 @@ interface ApplyInterfaceProps {
   jobUrl: string;
   jobTitle?: string;
   company?: string;
-  onClose?: () => void;
 }
 
 interface LogEntry {
   id: string;
-  type: "status" | "log" | "filled" | "warning" | "error" | "complete";
+  type: "status" | "log" | "tool_use" | "tool_result" | "warning" | "error" | "complete";
   message: string;
   timestamp: Date;
-}
-
-interface PendingInput {
-  field: string;
-  prompt: string;
-  fieldType: string;
-  options?: Array<{ value: string; text: string }>;
 }
 
 export default function ApplyInterface({
   jobUrl,
   jobTitle,
   company,
-  onClose,
 }: ApplyInterfaceProps) {
   const [isRunning, setIsRunning] = useState(false);
-  const [applicationId, setApplicationId] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [pendingInput, setPendingInput] = useState<PendingInput | null>(null);
-  const [inputValue, setInputValue] = useState("");
-  const [saveAsPreference, setSaveAsPreference] = useState(true);
+  const [headless, setHeadless] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -66,10 +46,7 @@ export default function ApplyInterface({
     logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [logs]);
 
-  const addLog = (
-    type: LogEntry["type"],
-    message: string
-  ) => {
+  const addLog = (type: LogEntry["type"], message: string) => {
     setLogs((prev) => [
       ...prev,
       {
@@ -86,7 +63,6 @@ export default function ApplyInterface({
     setIsComplete(false);
     setError(null);
     setLogs([]);
-    setPendingInput(null);
 
     abortControllerRef.current = new AbortController();
 
@@ -94,7 +70,7 @@ export default function ApplyInterface({
       const response = await fetch("/api/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jobUrl }),
+        body: JSON.stringify({ jobUrl, showBrowser: !headless }),
         signal: abortControllerRef.current.signal,
       });
 
@@ -127,13 +103,14 @@ export default function ApplyInterface({
               const data = JSON.parse(line.slice(6));
 
               if (currentEventType === "start") {
-                setApplicationId(data.applicationId);
-                addLog("status", "Application started");
+                addLog("status", "Application started — Claude is taking over");
               } else if (currentEventType === "message") {
                 if (data.type === "status") {
                   addLog("status", data.message);
-                } else if (data.type === "filled") {
-                  addLog("filled", `Filled "${data.field}": ${data.value}`);
+                } else if (data.type === "tool_use") {
+                  addLog("tool_use", data.message);
+                } else if (data.type === "tool_result") {
+                  addLog("tool_result", data.message);
                 } else if (data.type === "warning") {
                   addLog("warning", data.message);
                 } else if (data.type === "error") {
@@ -142,18 +119,9 @@ export default function ApplyInterface({
                 } else if (data.type === "complete") {
                   addLog("complete", data.message);
                   setIsComplete(true);
-                } else if (data.type === "NEED_INPUT") {
-                  setPendingInput({
-                    field: data.field,
-                    prompt: data.prompt,
-                    fieldType: data.field_type,
-                    options: data.options,
-                  });
                 }
               } else if (currentEventType === "log") {
                 addLog("log", data.message);
-              } else if (currentEventType === "preference_saved") {
-                addLog("status", `Saved preference: ${data.category}`);
               } else if (currentEventType === "complete") {
                 if (data.code === 0) {
                   addLog("complete", "Application process completed");
@@ -191,29 +159,6 @@ export default function ApplyInterface({
     }
   };
 
-  const submitInput = async () => {
-    if (!pendingInput || !inputValue.trim() || !applicationId) return;
-
-    try {
-      await fetch("/api/apply", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          applicationId,
-          field: pendingInput.field,
-          value: inputValue,
-          savePreference: saveAsPreference,
-        }),
-      });
-
-      addLog("filled", `Provided "${pendingInput.field}": ${inputValue}`);
-      setPendingInput(null);
-      setInputValue("");
-    } catch (err) {
-      addLog("error", "Failed to submit input");
-    }
-  };
-
   const getLogIcon = (type: LogEntry["type"]) => {
     switch (type) {
       case "complete":
@@ -222,8 +167,10 @@ export default function ApplyInterface({
         return <AlertCircle className="h-3.5 w-3.5 text-destructive" />;
       case "warning":
         return <AlertCircle className="h-3.5 w-3.5 text-amber-500" />;
-      case "filled":
-        return <CheckCircle className="h-3.5 w-3.5 text-primary" />;
+      case "tool_use":
+        return <Wrench className="h-3.5 w-3.5 text-blue-500" />;
+      case "tool_result":
+        return <CheckCircle className="h-3.5 w-3.5 text-blue-400" />;
       default:
         return <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />;
     }
@@ -245,7 +192,24 @@ export default function ApplyInterface({
               </p>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="headless-toggle"
+                checked={headless}
+                onCheckedChange={(checked) => setHeadless(checked as boolean)}
+                disabled={isRunning}
+              />
+              <label
+                htmlFor="headless-toggle"
+                className={cn(
+                  "text-xs text-muted-foreground cursor-pointer select-none",
+                  isRunning && "opacity-60 cursor-not-allowed"
+                )}
+              >
+                Headless
+              </label>
+            </div>
             {!isRunning && !isComplete && (
               <Button onClick={startApplication} size="sm">
                 <Play className="h-4 w-4 mr-1" />
@@ -260,11 +224,6 @@ export default function ApplyInterface({
               >
                 <Square className="h-4 w-4 mr-1" />
                 Stop
-              </Button>
-            )}
-            {onClose && (
-              <Button onClick={onClose} variant="ghost" size="sm">
-                Close
               </Button>
             )}
           </div>
@@ -291,7 +250,8 @@ export default function ApplyInterface({
                   log.type === "error" && "text-destructive",
                   log.type === "warning" && "text-amber-500",
                   log.type === "complete" && "text-green-500",
-                  log.type === "filled" && "text-primary",
+                  log.type === "tool_use" && "text-blue-500",
+                  log.type === "tool_result" && "text-blue-400",
                   (log.type === "status" || log.type === "log") &&
                     "text-muted-foreground"
                 )}
@@ -308,80 +268,6 @@ export default function ApplyInterface({
         )}
       </div>
 
-      {/* Input prompt area */}
-      <AnimatePresence>
-        {pendingInput && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="border-t border-border overflow-hidden"
-          >
-            <div className="p-4 space-y-3 bg-primary/5">
-              <div className="flex items-center gap-2">
-                <AlertCircle className="h-4 w-4 text-primary" />
-                <span className="text-sm font-medium">Input Required</span>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                {pendingInput.prompt}
-              </p>
-
-              <div className="flex gap-2">
-                {pendingInput.options && pendingInput.options.length > 0 ? (
-                  <Select value={inputValue} onValueChange={setInputValue}>
-                    <SelectTrigger className="flex-1">
-                      <SelectValue placeholder="Select an option..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {pendingInput.options.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>
-                          {opt.text}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <Input
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                    placeholder="Enter your answer..."
-                    className="flex-1"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        submitInput();
-                      }
-                    }}
-                  />
-                )}
-                <Button
-                  onClick={submitInput}
-                  disabled={!inputValue.trim()}
-                  size="icon"
-                >
-                  <Send className="h-4 w-4" />
-                </Button>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="save-pref"
-                  checked={saveAsPreference}
-                  onCheckedChange={(checked) =>
-                    setSaveAsPreference(checked as boolean)
-                  }
-                />
-                <label
-                  htmlFor="save-pref"
-                  className="text-xs text-muted-foreground cursor-pointer"
-                >
-                  Save as preference for future applications
-                </label>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* Status bar */}
       <div className="border-t border-border px-4 py-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -389,7 +275,7 @@ export default function ApplyInterface({
             <>
               <Loader2 className="h-3 w-3 animate-spin text-primary" />
               <span className="text-xs text-muted-foreground">
-                Application in progress...
+                Claude is applying...
               </span>
             </>
           )}

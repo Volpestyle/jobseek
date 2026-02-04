@@ -174,6 +174,7 @@ export default function FilterPanel({ onScrape, isLoading }: FilterPanelProps) {
 
   const experienceValue = filters.experience || "any";
   const dateValue = filters.date_posted || "any";
+  const headless = !filters.showBrowser;
 
   return (
     <div id="filters" className="cyber-card">
@@ -332,17 +333,19 @@ export default function FilterPanel({ onScrape, isLoading }: FilterPanelProps) {
             <label className="flex items-center gap-2.5 cursor-pointer group">
               <Checkbox
                 id="showBrowser"
-                checked={filters.showBrowser}
-                onCheckedChange={(value) => update("showBrowser", Boolean(value))}
+                checked={headless}
+                onCheckedChange={(value) =>
+                  update("showBrowser", !Boolean(value))
+                }
               />
               <div className="flex items-center gap-1.5">
-                {filters.showBrowser ? (
-                  <Eye className="h-3 w-3 text-primary" />
-                ) : (
+                {headless ? (
                   <EyeOff className="h-3 w-3 text-muted-foreground/50" />
+                ) : (
+                  <Eye className="h-3 w-3 text-primary" />
                 )}
                 <span className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">
-                  Show browser window
+                  Headless (no window)
                 </span>
               </div>
             </label>

@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { spawn } from "child_process";
-import path from "path";
-import fs from "fs";
 import { saveScrape, getLatestScrape } from "@/lib/db";
+import { scrapeLinkedInJobs } from "@/lib/scraper";
 
 export const maxDuration = 900; // 15 min timeout for long scrapes
 
@@ -23,7 +21,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Check for credentials
     if (!process.env.LINKEDIN_EMAIL || !process.env.LINKEDIN_PASSWORD) {
       console.error(`${logPrefix} Missing credentials`);
       return NextResponse.json(
@@ -35,31 +32,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const scriptPath = path.join(process.cwd(), "scripts", "scrape_jobs.py");
-    console.log(`${logPrefix} Script path resolved: ${scriptPath}`);
-
-    if (!fs.existsSync(scriptPath)) {
-      console.error(`${logPrefix} Script not found at: ${scriptPath}`);
-      return NextResponse.json(
-        { error: "scrape_jobs.py not found in scripts/" },
-        { status: 500 }
-      );
-    }
-
-    const filtersJson = JSON.stringify(filters);
-
-    // Check for showBrowser flag in filters (frontend puts it there)
     const showBrowser = !!filters.showBrowser;
-
-    console.log(`${logPrefix} Spawning python script... (Headless: ${!showBrowser})`);
-
-    const pythonPath = path.join(process.cwd(), "venv", "bin", "python3");
-    console.log(`${logPrefix} Using python at: ${pythonPath}`);
-
-    // Fallback to system python if venv doesn't exist (though we expect it to)
-    const executable = fs.existsSync(pythonPath) ? pythonPath : "python3";
-    console.log(`${logPrefix} Final executable: ${executable}`);
-
     const summarize =
       typeof filters?.summarize === "boolean"
         ? filters.summarize
@@ -70,116 +43,31 @@ export async function POST(req: NextRequest) {
     const summarizeModel =
       filters?.summarizeModel || process.env.JOB_SUMMARY_MODEL || "haiku";
     const summarizeTimeout =
-      parseInt(process.env.JOB_SUMMARY_TIMEOUT || "60", 10) || 60;
+      parseInt(process.env.JOB_SUMMARY_TIMEOUT || "60", 10);
     const summarizeMax =
-      parseInt(process.env.JOB_SUMMARY_MAX || "0", 10) || 0;
-    const summaryFieldsPath = process.env.JOB_SUMMARY_FIELDS_PATH || "";
+      parseInt(process.env.JOB_SUMMARY_MAX || "0", 10);
 
-    const args = [
-      scriptPath,
-      "--filters",
-      filtersJson,
-      "--max-pages",
-      String(maxPages),
-    ];
-
-    if (showBrowser) {
-      args.push("--show-browser");
-    }
-
-    if (summarize) {
-      args.push("--summarize");
-      if (summarizeModel) {
-        args.push("--summarize-model", summarizeModel);
-      }
-      if (summarizeTimeout) {
-        args.push("--summarize-timeout", String(summarizeTimeout));
-      }
-      if (summarizeMax >= 0) {
-        args.push("--summarize-max", String(summarizeMax));
-      }
-      if (summaryFieldsPath) {
-        args.push("--summary-fields", summaryFieldsPath);
-      }
-    }
-
-    const result = await new Promise<{ stdout: string; stderr: string }>(
-      (resolve, reject) => {
-        const proc = spawn(executable, args, {
-          env: {
-            ...process.env,
-            LINKEDIN_EMAIL: process.env.LINKEDIN_EMAIL,
-            LINKEDIN_PASSWORD: process.env.LINKEDIN_PASSWORD,
-          },
-          timeout: 900000, // 15 min
-        }
-        );
-
-        console.log(`${logPrefix} Process spawned with PID: ${proc.pid}`);
-
-        let stdout = "";
-        let stderr = "";
-
-        proc.stdout.on("data", (data: Buffer) => {
-          stdout += data.toString();
-        });
-
-        proc.stderr.on("data", (data: Buffer) => {
-          const chunk = data.toString();
-          stderr += chunk;
-        });
-
-        proc.on("close", (code: number | null) => {
-          console.log(`${logPrefix} Process closed with code: ${code}`);
-          if (code === 0) {
-            resolve({ stdout, stderr });
-          } else {
-            console.error(`${logPrefix} Process failed.\nstdout: ${stdout}\nstderr: ${stderr}`);
-            reject(
-              new Error(
-                `Scraper exited with code ${code}.\nstdout: ${stdout}\nstderr: ${stderr}`
-              )
-            );
-          }
-        });
-
-        proc.on("error", (err: Error) => {
-          console.error(`${logPrefix} Spawn error:`, err);
-          reject(err);
-        });
-      }
+    console.log(
+      `${logPrefix} Starting scrape (headless: ${!showBrowser}, summarize: ${summarize})`
     );
 
-    console.log(`${logPrefix} Script finished. Parsing stdout...`);
+    const logs: string[] = [];
+    const jobs = await scrapeLinkedInJobs({
+      filters,
+      maxPages,
+      showBrowser,
+      summarize,
+      summarizeModel,
+      summarizeTimeout: summarizeTimeout * 1000,
+      summarizeMax,
+      onLog: (msg) => logs.push(msg),
+    });
 
-    // stdout should be clean JSON array
-    let jobs;
-    try {
-      jobs = JSON.parse(result.stdout.trim());
-      console.log(`${logPrefix} Parsed ${jobs.length} jobs.`);
-    } catch (e) {
-      console.error(`${logPrefix} JSON parse error:`, e);
-      console.log(`${logPrefix} Raw stdout:`, result.stdout);
+    console.log(`${logPrefix} Scraped ${jobs.length} jobs`);
 
-      // If the scraper output an error JSON
-      try {
-        const errObj = JSON.parse(result.stdout.trim());
-        return NextResponse.json(errObj, { status: 500 });
-      } catch {
-        return NextResponse.json(
-          {
-            error: "Failed to parse scraper output.",
-            details: result.stderr,
-            raw: result.stdout.slice(0, 500),
-          },
-          { status: 500 }
-        );
-      }
-    }
-
-    // Save results to SQLite
     const scrapedAt = new Date().toISOString();
-    const scrapeId = saveScrape(filters, jobs, result.stderr || null);
+    const logsText = logs.join("\n");
+    const scrapeId = saveScrape(filters, jobs, logsText || null);
     console.log(`${logPrefix} Saved to SQLite with id: ${scrapeId}`);
 
     return NextResponse.json({
@@ -187,7 +75,7 @@ export async function POST(req: NextRequest) {
       jobs,
       count: jobs.length,
       scrapedAt,
-      logs: result.stderr,
+      logs: logsText,
     });
   } catch (err: unknown) {
     console.error(`${logPrefix} Unhandled catch:`, err);

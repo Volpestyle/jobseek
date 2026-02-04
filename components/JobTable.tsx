@@ -330,7 +330,7 @@ export default function JobTable({
                       variant="ghost"
                       size="sm"
                       onClick={() => onApply(job)}
-                      className="h-7 px-2 opacity-0 group-hover:opacity-100 transition-opacity font-mono text-[10px]"
+                      className="h-7 px-2 font-mono text-[10px]"
                     >
                       <Play className="h-3 w-3 mr-1" />
                       APPLY

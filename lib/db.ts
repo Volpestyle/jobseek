@@ -22,6 +22,7 @@ db.exec(`
     experience TEXT,
     date_posted TEXT,
     max_pages INTEGER DEFAULT 5,
+    show_browser INTEGER DEFAULT 0,
     updated_at TEXT
   );
 
@@ -44,6 +45,14 @@ db.exec(`
   );
 `);
 
+const prefsColumns = db
+  .prepare("PRAGMA table_info(preferences)")
+  .all() as { name: string }[];
+const hasShowBrowser = prefsColumns.some((col) => col.name === "show_browser");
+if (!hasShowBrowser) {
+  db.exec("ALTER TABLE preferences ADD COLUMN show_browser INTEGER DEFAULT 0");
+}
+
 export interface Preferences {
   keywords: string;
   location: string;
@@ -51,6 +60,7 @@ export interface Preferences {
   experience: string;
   date_posted: string;
   max_pages: number;
+  show_browser: boolean;
 }
 
 export interface ScrapeRecord {
@@ -78,6 +88,7 @@ export function getPreferences(): Preferences | null {
     experience: string | null;
     date_posted: string | null;
     max_pages: number | null;
+    show_browser: number | null;
   } | undefined;
 
   if (!row) return null;
@@ -89,13 +100,14 @@ export function getPreferences(): Preferences | null {
     experience: row.experience || "",
     date_posted: row.date_posted || "",
     max_pages: row.max_pages || 5,
+    show_browser: Boolean(row.show_browser),
   };
 }
 
 export function savePreferences(prefs: Preferences): void {
   const stmt = db.prepare(`
-    INSERT INTO preferences (id, keywords, location, remote, experience, date_posted, max_pages, updated_at)
-    VALUES (1, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO preferences (id, keywords, location, remote, experience, date_posted, max_pages, show_browser, updated_at)
+    VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       keywords = excluded.keywords,
       location = excluded.location,
@@ -103,6 +115,7 @@ export function savePreferences(prefs: Preferences): void {
       experience = excluded.experience,
       date_posted = excluded.date_posted,
       max_pages = excluded.max_pages,
+      show_browser = excluded.show_browser,
       updated_at = excluded.updated_at
   `);
 
@@ -113,6 +126,7 @@ export function savePreferences(prefs: Preferences): void {
     prefs.experience,
     prefs.date_posted,
     prefs.max_pages,
+    prefs.show_browser ? 1 : 0,
     new Date().toISOString()
   );
 }

@@ -1,27 +1,15 @@
 import { NextRequest } from "next/server";
-import { spawn, ChildProcess } from "child_process";
-import path from "path";
-import { getChatPreferences, saveChatPreference } from "@/lib/db";
+import { getChatPreferences } from "@/lib/db";
+import { streamClaudeAgentic, type ClaudeStreamEvent } from "@/lib/claude";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-interface ApplyRequest {
-  jobUrl: string;
-}
-
-interface ApplicationState {
-  proc: ChildProcess;
-  pendingInput: string | null;
-}
-
-// Track running applications
-const runningApplications = new Map<string, ApplicationState>();
-
 export async function POST(request: NextRequest) {
   try {
-    const body: ApplyRequest = await request.json();
-    const { jobUrl } = body;
+    const body = await request.json();
+    const { jobUrl } = body as { jobUrl: string; showBrowser?: boolean };
+    const showBrowser = body.showBrowser ?? true;
 
     if (!jobUrl) {
       return new Response(JSON.stringify({ error: "Job URL is required" }), {
@@ -30,54 +18,87 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Get existing preferences to pass to script
-    const dbPreferences = getChatPreferences();
-    const preferences: Record<string, string> = {};
-    for (const pref of dbPreferences) {
-      if (pref.category) {
-        preferences[pref.category] = pref.answer;
-      }
+    const linkedinEmail = process.env.LINKEDIN_EMAIL || "";
+    const linkedinPassword = process.env.LINKEDIN_PASSWORD || "";
+
+    if (!linkedinEmail || !linkedinPassword) {
+      return new Response(
+        JSON.stringify({
+          error: "Missing LINKEDIN_EMAIL or LINKEDIN_PASSWORD env vars",
+        }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
     }
 
-    const scriptPath = path.join(process.cwd(), "scripts", "apply_job.py");
+    // Build preferences context from DB
+    const dbPreferences = getChatPreferences();
+    const prefsLines = dbPreferences.map(
+      (p) => `- ${p.question}: ${p.answer}`
+    );
+    const prefsBlock =
+      prefsLines.length > 0
+        ? `User preferences (use these to fill form fields):\n${prefsLines.join("\n")}`
+        : "No saved preferences. Fill fields with reasonable defaults or leave optional fields empty.";
+
+    const systemPrompt = `You are a job application assistant. You will use the browser tools to apply to a LinkedIn job posting.
+
+LinkedIn credentials (use these to log in):
+- Email: ${linkedinEmail}
+- Password: ${linkedinPassword}
+
+${prefsBlock}
+
+Instructions:
+1. Launch the browser (headless: ${!showBrowser})
+2. Navigate to https://www.linkedin.com/login
+3. Log in using the credentials above (type them into the form fields)
+4. Navigate to the job URL: ${jobUrl}
+5. Look for the "Easy Apply" button and click it
+6. Fill out the application form using the saved preferences
+7. For each form step, fill all fields, then click Next/Continue
+8. When you reach the final step, click Submit
+9. Close the browser when done
+
+Important:
+- Take screenshots frequently to see what's on the page
+- Use browser_get_elements to find form fields
+- If a field has a dropdown, use browser_select
+- Type slowly and wait between actions to avoid detection
+- If you encounter a CAPTCHA, report it and stop
+- Report each action you take so the user can follow along`;
+
+    const userMessage = `Apply to this LinkedIn job: ${jobUrl}`;
+
     const encoder = new TextEncoder();
-    let closeStream: (() => void) | null = null;
-    let proc: ChildProcess | null = null;
+    let abortFn: (() => void) | null = null;
 
     const stream = new ReadableStream({
       start(controller) {
         let isClosed = false;
-        let onAbort: (() => void) | null = null;
 
         const finish = () => {
           if (isClosed) return;
           isClosed = true;
-          if (onAbort) {
-            request.signal.removeEventListener("abort", onAbort);
-          }
           try {
             controller.close();
           } catch {
-            // Ignore close errors
+            // Ignore
           }
         };
 
-        closeStream = finish;
-
         const sse = (event: string, data: unknown) => {
           if (isClosed) return;
-          const sseMessage = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
           try {
-            controller.enqueue(encoder.encode(sseMessage));
+            controller.enqueue(
+              encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+            );
           } catch {
             finish();
           }
         };
 
-        onAbort = () => {
-          if (proc) {
-            proc.kill("SIGTERM");
-          }
+        const onAbort = () => {
+          abortFn?.();
           finish();
         };
 
@@ -88,83 +109,60 @@ export async function POST(request: NextRequest) {
           return;
         }
 
-        // Spawn the Python script
-        proc = spawn("python3", [
-          scriptPath,
-          "--job-url",
-          jobUrl,
-          "--preferences",
-          JSON.stringify(preferences),
-        ], {
-          stdio: ["pipe", "pipe", "pipe"],
-          env: {
-            ...process.env,
-            PYTHONUNBUFFERED: "1",
-          },
-        });
-
-        const applicationId = `app-${Date.now()}`;
-        runningApplications.set(applicationId, { proc, pendingInput: null });
-
-        sse("start", { applicationId });
-
-        let stdoutBuffer = "";
-
-        proc.stdout?.on("data", (chunk: Buffer) => {
-          stdoutBuffer += chunk.toString();
-          const lines = stdoutBuffer.split("\n");
-          stdoutBuffer = lines.pop() || "";
-
-          for (const line of lines) {
-            if (!line.trim()) continue;
-            try {
-              const data = JSON.parse(line);
-
-              // Handle save_preference events
-              if (data.type === "save_preference") {
-                saveChatPreference(data.question, data.answer, data.category);
-                sse("preference_saved", {
-                  category: data.category,
-                  question: data.question,
-                  answer: data.answer,
-                });
-                continue;
-              }
-
-              sse("message", data);
-            } catch {
-              // Non-JSON output, treat as status
-              sse("log", { message: line });
-            }
+        const onEvent = (event: ClaudeStreamEvent) => {
+          switch (event.type) {
+            case "delta":
+              sse("message", { type: "status", message: event.content });
+              break;
+            case "thinking":
+              sse("log", { message: `[thinking] ${event.content}` });
+              break;
+            case "tool_use":
+              sse("message", {
+                type: "tool_use",
+                tool: event.toolName,
+                message: event.content,
+              });
+              break;
+            case "tool_result":
+              sse("message", {
+                type: "tool_result",
+                tool: event.toolName,
+                message: event.content,
+              });
+              break;
+            case "done":
+              sse("message", {
+                type: "complete",
+                message: "Application process completed",
+              });
+              sse("complete", { code: 0 });
+              finish();
+              break;
+            case "error":
+              sse("message", { type: "error", message: event.error });
+              sse("error", { message: event.error });
+              finish();
+              break;
           }
-        });
+        };
 
-        proc.stderr?.on("data", (chunk: Buffer) => {
-          const text = chunk.toString().trim();
-          if (text) {
-            sse("log", { message: text });
+        sse("start", { applicationId: `app-${Date.now()}` });
+
+        const result = streamClaudeAgentic(systemPrompt, userMessage, onEvent);
+        abortFn = result.abort;
+
+        result.promise.catch((err) => {
+          if (!isClosed) {
+            sse("error", {
+              message: err instanceof Error ? err.message : "Unknown error",
+            });
+            finish();
           }
-        });
-
-        proc.on("close", (code) => {
-          runningApplications.delete(applicationId);
-          sse("complete", { code, applicationId });
-          finish();
-        });
-
-        proc.on("error", (err) => {
-          runningApplications.delete(applicationId);
-          sse("error", { message: err.message });
-          finish();
         });
       },
       cancel() {
-        if (proc) {
-          proc.kill("SIGTERM");
-        }
-        if (closeStream) {
-          closeStream();
-        }
+        abortFn?.();
       },
     });
 
@@ -181,37 +179,8 @@ export async function POST(request: NextRequest) {
     console.error("[Apply] Error:", error);
     return new Response(
       JSON.stringify({
-        error: error instanceof Error ? error.message : "Failed to start application",
-      }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    );
-  }
-}
-
-// Endpoint to send input to a running application
-export async function PUT(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const { applicationId, field, value, savePreference } = body;
-
-    const state = runningApplications.get(applicationId);
-    if (!state) {
-      return new Response(
-        JSON.stringify({ error: "Application not found or already completed" }),
-        { status: 404, headers: { "Content-Type": "application/json" } }
-      );
-    }
-
-    const input = JSON.stringify({ field, value, save_preference: savePreference }) + "\n";
-    state.proc.stdin?.write(input);
-
-    return new Response(JSON.stringify({ success: true }), {
-      headers: { "Content-Type": "application/json" },
-    });
-  } catch (error) {
-    return new Response(
-      JSON.stringify({
-        error: error instanceof Error ? error.message : "Failed to send input",
+        error:
+          error instanceof Error ? error.message : "Failed to start application",
       }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );

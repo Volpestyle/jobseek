@@ -1,6 +1,11 @@
 import { spawn } from "child_process";
 import path from "path";
 
+export interface CallClaudeJSONResult {
+  data: Record<string, unknown> | null;
+  raw: string;
+}
+
 export interface ClaudeStreamEvent {
   type: "delta" | "done" | "error" | "thinking" | "tool_use" | "tool_result";
   content?: string;
@@ -359,4 +364,125 @@ export function streamClaudeAgentic(
   });
 
   return { promise, abort };
+}
+
+/**
+ * Parse raw Claude CLI output into a JSON object.
+ * Tries direct parse, unwraps common wrappers, falls back to extracting first {...} block.
+ */
+export function parseClaudeJSON(raw: string): Record<string, unknown> | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+
+  // Direct parse
+  try {
+    const data = JSON.parse(trimmed);
+    if (typeof data === "object" && data !== null && !Array.isArray(data)) {
+      for (const key of ["content", "completion", "response", "output"]) {
+        if (key in data && typeof data[key] === "string") {
+          try {
+            const inner = JSON.parse(data[key] as string);
+            if (typeof inner === "object" && inner !== null && !Array.isArray(inner)) {
+              return inner as Record<string, unknown>;
+            }
+          } catch {
+            // Not nested JSON
+          }
+        }
+      }
+      return data as Record<string, unknown>;
+    }
+  } catch {
+    // Not valid JSON
+  }
+
+  // Fallback: extract first {...} block
+  const start = trimmed.indexOf("{");
+  const end = trimmed.lastIndexOf("}");
+  if (start !== -1 && end !== -1 && end > start) {
+    try {
+      return JSON.parse(trimmed.slice(start, end + 1)) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Non-streaming Claude CLI call that returns structured JSON.
+ * Uses stdio: ["ignore", "pipe", "pipe"] to fix the hanging bug
+ * (Python version used stdin=PIPE which caused Claude to hang waiting for input).
+ */
+export async function callClaudeJSON(
+  prompt: string,
+  schema: Record<string, unknown>,
+  options?: { model?: string; timeout?: number }
+): Promise<CallClaudeJSONResult> {
+  const model = options?.model;
+  const timeout = options?.timeout ?? 60000;
+
+  const args = [
+    "-p",
+    prompt,
+    "--output-format",
+    "text",
+    "--json-schema",
+    JSON.stringify(schema),
+  ];
+  if (model) {
+    args.push("--model", model);
+  }
+
+  claudeLog("callClaudeJSON starting", { model: model ?? "default", timeout, promptLen: prompt.length });
+
+  return new Promise<CallClaudeJSONResult>((resolve) => {
+    const proc = spawn("claude", args, {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: getClaudeEnv(),
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    const timer = setTimeout(() => {
+      claudeLog("callClaudeJSON timed out");
+      try {
+        proc.kill("SIGTERM");
+      } catch {
+        // Ignore
+      }
+    }, timeout);
+
+    proc.stdout?.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString();
+    });
+
+    proc.stderr?.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+
+    proc.on("close", (code) => {
+      clearTimeout(timer);
+      claudeLog("callClaudeJSON finished", { code, stdoutLen: stdout.length });
+      if (stderr.trim()) {
+        claudeLog("callClaudeJSON stderr:", stderr.trim().slice(0, 500));
+      }
+
+      if (code !== 0 && !stdout.trim()) {
+        resolve({ data: null, raw: stdout });
+        return;
+      }
+
+      const data = parseClaudeJSON(stdout);
+      resolve({ data, raw: stdout });
+    });
+
+    proc.on("error", (err) => {
+      clearTimeout(timer);
+      claudeLog("callClaudeJSON spawn error:", err.message);
+      resolve({ data: null, raw: "" });
+    });
+  });
 }

@@ -16,6 +16,7 @@ export async function POST(req: NextRequest) {
     experience: body.experience || "",
     date_posted: body.date_posted || "",
     max_pages: body.max_pages || 5,
+    show_browser: Boolean(body.show_browser),
   });
 
   return NextResponse.json({ success: true });

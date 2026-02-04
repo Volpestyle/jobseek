@@ -200,8 +200,8 @@ export default function Home() {
             </div>
             <div className="p-4 space-y-3 text-xs text-muted-foreground">
               <p>
-                <span className="text-primary font-mono">Show Browser</span> — Enable
-                this if LinkedIn shows a CAPTCHA. You can solve it manually.
+                <span className="text-primary font-mono">Headless</span> — Disable
+                this if LinkedIn shows a CAPTCHA so you can solve it manually.
               </p>
               <p>
                 <span className="text-primary font-mono">Max Pages</span> — Each page
