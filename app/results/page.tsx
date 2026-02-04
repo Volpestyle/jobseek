@@ -21,7 +21,6 @@ import {
   Database,
   Layers,
   Search,
-  X,
 } from "lucide-react";
 
 interface AccumulatedData {
@@ -273,16 +272,6 @@ function ResultsContent() {
       {applyingJob && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
           <div className="w-full max-w-2xl">
-            <div className="flex justify-end mb-2">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setApplyingJob(null)}
-                className="h-8 w-8"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
             <ApplyInterface
               jobUrl={applyingJob.link}
               jobTitle={applyingJob.title}
